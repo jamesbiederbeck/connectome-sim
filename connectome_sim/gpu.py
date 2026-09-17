@@ -228,7 +228,7 @@ class GPUBrain(Brain):
         self._ag = math.exp(-dt / 5)
         self._coupling = (self._av - self._ag) / 3
 
-    def step(self, luminance, duration_ms, sugar=False, lamina_bias=12.0):
+    def step(self, luminance, duration_ms, sugar=False, lamina_bias=12.0, stimulation=None):
         if len(luminance) != len(self.retina) or not np.all(np.isfinite(luminance)):
             raise ValueError('A finite luminance sample is required for every mapped receptor')
         if not math.isfinite(duration_ms) or not math.isfinite(lamina_bias):
@@ -241,6 +241,14 @@ class GPUBrain(Brain):
         drive_host[self.lamina] = lamina_bias
         drive_host[self.retina] = 30 * self.luminance / (.02 + self.luminance)
         if sugar: drive_host[self.sugar] = 30
+        if stimulation is not None:
+            pulses = stimulation if isinstance(stimulation, list) else [stimulation]
+            for indices, current in pulses:
+                ix = np.asarray(indices, dtype=np.int32)
+                amplitude = np.asarray(current, dtype=np.float32)
+                if ix.ndim != 1 or np.any(ix < 0) or np.any(ix >= self.n) or not np.isfinite(amplitude).all() or amplitude.shape not in [(), ix.shape]:
+                    raise ValueError('Invalid external stimulation')
+                drive_host[ix] += amplitude
         self.drive = self._cp.asarray(drive_host)
         self._counts.fill(0)
         start = time.perf_counter()

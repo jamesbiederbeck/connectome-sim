@@ -18,7 +18,7 @@ class NativeBrain(Brain):
         super().__init__(path,dt)
         self.previous_drive=np.zeros(self.n,dtype=np.float32)
         self.last=np.full(self.n,-1,dtype=np.int64)
-    def step(self,luminance,duration_ms,sugar=False,lamina_bias=12.0):
+    def step(self,luminance,duration_ms,sugar=False,lamina_bias=12.0,stimulation=None):
         if len(luminance)!=len(self.retina) or not np.all(np.isfinite(luminance)):raise ValueError('Invalid retinal input')
         if not math.isfinite(duration_ms) or not math.isfinite(lamina_bias):raise ValueError('Finite duration and current required')
         steps=int(round(duration_ms/self.dt))
@@ -26,6 +26,16 @@ class NativeBrain(Brain):
         self.luminance+=(1-math.exp(-steps*self.dt/10))*(np.clip(luminance,0,1)-self.luminance)
         self.drive.fill(0);self.drive[self.lamina]=lamina_bias;self.drive[self.retina]=30*self.luminance/(.02+self.luminance)
         if sugar:self.drive[self.sugar]=30
+        if stimulation is not None:
+            # Same external-current mechanism doom_learning_v6 uses for PPL101
+            # pulses, generalized here so any caller can inject a tonic or
+            # pulsed current into arbitrary cells without touching the kernel.
+            pulses=stimulation if isinstance(stimulation,list) else [stimulation]
+            for indices,current in pulses:
+                ix=np.asarray(indices,dtype=np.int32)
+                amplitude=np.asarray(current,dtype=np.float32)
+                if ix.ndim!=1 or np.any(ix<0) or np.any(ix>=self.n) or not np.isfinite(amplitude).all() or amplitude.shape not in [(),ix.shape]:raise ValueError('Invalid external stimulation')
+                self.drive[ix]+=amplitude
         self.counts.fill(0);clock=np.asarray([self.cursor],dtype=np.int64)
         arrays=[self.ptr,self.post,self.weight,self.v,self.g,self.refractory,self.drive,self.previous_drive,self.queue,self.queue_count,clock]
         start=time.perf_counter()
