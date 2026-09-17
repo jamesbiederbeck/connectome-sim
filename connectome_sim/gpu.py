@@ -1,43 +1,50 @@
 """CuPy GPU implementation of the fixed-step LIF model in doom/engine.py.
 
-Ports the dense every-substep formulation (not kernel.cpp's lazy active-list
-skip, which is a CPU-only optimization that becomes a liability on a GPU).
-Synaptic delivery, decay, threshold and reset are fused into one hand-written
-CUDA kernel launch per substep (_FUSED_SUBSTEP_SOURCE), against the graph
-transposed once at load time to post-major layout.
+Event-driven design, matching the CPU kernels' (kernel.cpp, doom/engine.py)
+behavior: edges are only touched for neurons that actually spiked, not for
+every neuron every substep. This replaces three earlier dense-every-substep
+designs (SpMV, thread-per-row, warp-per-row -- preserved in doom/gpu_attempts/
+for reference) that were bandwidth-bound: reading all 25,582,938 edges every
+dt=0.1ms substep regardless of how many neurons actually spiked (typically
+~62 of 166,700) capped them at ~2-3.3 tics/sec on this hardware, no matter
+how well-written the kernel was -- see docs/doom-gpu-kernel-review.md for
+that roofline math and the measured results of this design.
 
-IMPORTANT, measured limit: the dense formulation reads every one of the
-graph's 25,582,938 edges (204.7MB) each dt=0.1ms substep, regardless of how
-many neurons actually spiked (typically ~62 of 166,700). That is bandwidth
-work, not a kernel-quality problem -- see docs/doom-gpu-kernel-review.md for
-the roofline math. Two kernel designs were tried, in order:
+Two CUDA kernels run per substep, launched back to back on the default
+stream (ordering matters and is guaranteed by same-stream sequencing):
 
-1. An SpMV-via-cuSPARSE version measured ~2.2ms/substep (~94 GB/s, ~49% of
-   this card's ~192 GB/s peak) -- already close to bandwidth-bound, not
-   overhead-bound as first assumed.
-2. A hand-written one-thread-per-row replacement was *slower* (~3.9ms/substep,
-   ~52 GB/s): this graph's in-degree is extremely skewed (median 112, max
-   11,203, 258 neurons above 2,000), and a CUDA warp only runs as fast as its
-   slowest thread, so one hub neuron sharing a warp with 31 median-degree
-   neurons stalls the whole warp ~100x longer than needed.
+1. `lif_decay_spike_reset` -- dense elementwise pass over all n neurons:
+   decay, threshold, immediate reset on spike (matching the reference's
+   same-tick reset / delayed-delivery schedule), and on spike, atomically
+   append the neuron's index into the *future* delay slot's index list
+   (an `atomicAdd` on that slot's counter, then a write of the index).
+   This part stays dense (not lazy/active-list, unlike kernel.cpp) because
+   it's uniform, branch-free SIMD work and already cheap (~0.6ms/substep
+   measured in the dense designs) -- the expensive part was always the
+   all-edges gather, not this.
+2. `lif_deliver_scatter` -- event-driven: reads the *current* slot's spike
+   count directly from device memory (no host sync) and grid-strides one
+   warp per queued spiking neuron over the graph's native **pre-major**
+   CSR (ptr/post/weight exactly as doom/prepare.py produces them -- no
+   transpose needed, unlike the dense designs' post-major gather layout),
+   scattering `atomicAdd(&g[post[e]], weight[e])` into each destination,
+   guarded by that destination's refractory state. Runs strictly after
+   kernel 1 (same-stream ordering) since it depends on kernel 1's freshly
+   updated refractory array, exactly as doom/engine.py's advance() does.
 
-The kernel below assigns one *warp* (32 threads) per row instead, splitting
-that row's edges across the warp's lanes and combining partial sums with a
-shuffle-reduce, with a grid-stride loop over rows so a warp that finishes a
-low-degree row immediately picks up another rather than idling. This reaches
-~1.9ms/substep, close to the ~1.6ms roofline ceiling for this design at this
-card's peak bandwidth -- i.e. this is close to the best any kernel can do
-*for this dense-every-substep architecture on this GPU*; going faster would
-need an event-driven design that only reads edges from neurons that actually
-spiked (this file's approach reads all of them every substep by construction;
-see the doc's "if you want to actually beat the CPU" section for what that
-would take, not attempted here).
+The delay ring buffer is an index list (`(slots, n)` int32, worst case one
+slot holding all n neurons, ~12.7MB -- trivial on a 6GB card) plus a
+`(slots,)` int32 counter array, mirroring doom/engine.py's queue/queue_count
+exactly, rather than the dense designs' `(slots, n)` boolean array that
+required scanning n entries whether or not anything was queued.
 
-The reference's "no delivery into an already-refractory neuron" guard
-depends only on the destination neuron, never the edge, so it is applied as
-a plain conditional (lane 0 only, after the reduction) rather than folded
-into the gather. Requires doom/requirements-gpu.txt and a CUDA GPU; not
-used by default.
+Known, accepted cost: `atomicAdd` on float32 `g` makes accumulation order
+nondeterministic run-to-run on the GPU (not just different from the CPU, as
+every prior design already was). doom/validate_gpu.py measures this
+directly (a self-vs-self repeat run) rather than assuming it away -- see the
+doc for the measured numbers.
+
+Requires doom/requirements-gpu.txt and a CUDA GPU; not used by default.
 """
 import math
 import os
@@ -91,46 +98,66 @@ def _configure_cuda_env():
         os.environ.setdefault('CUDA_PATH', str(cuda_runtime_root))
 
 
-# One warp (32 threads) per destination-neuron row: lanes split that row's
-# edges (stride 32) and combine partial sums with a shuffle-reduce, then lane
-# 0 does the per-neuron decay/threshold/reset. Grid-stride over rows so a
-# warp that finishes a low-degree row immediately takes another instead of
-# idling -- see the module docstring for why (in-degree here spans 100x,
-# median 112 to max 11,203, so one-thread-per-row stalls badly on hubs).
-_FUSED_SUBSTEP_SOURCE = r'''
+# Dense elementwise pass, one thread per neuron: decay/threshold/reset, same
+# math as the dense designs' fused kernel minus the gather. On spike, the
+# reset is immediate (matching the reference's same-tick reset / delayed-
+# delivery schedule) and the neuron's index is atomically appended to the
+# future delay slot's index list instead of setting a bit in a dense array.
+_DECAY_SPIKE_RESET_SOURCE = r'''
 extern "C" __global__
-void lif_substep_fused(
-    const long long* __restrict__ ptr, const int* __restrict__ pre_idx,
-    const float* __restrict__ weight, float* v, float* g, int* refractory,
-    const float* __restrict__ drive, const bool* __restrict__ delivering,
-    bool* __restrict__ future_queue, int* counts,
+void lif_decay_spike_reset(
+    float* v, float* g, int* refractory, const float* __restrict__ drive,
+    int* __restrict__ future_queue, int* future_count, int* counts,
     float av, float ag, float coupling, int rfc_steps, int n)
 {
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    if (i >= n) return;
+    int refr = refractory[i]; refr = refr > 0 ? refr - 1 : 0;
+    bool not_refractory = (refr == 0);
+    float vi = v[i], gi = g[i];
+    if (not_refractory) {
+        float v_new = -52.f + (vi + 52.f) * av + drive[i] * (1.f - av) + gi * coupling;
+        gi = gi * ag;
+        vi = v_new;
+    }
+    bool spiked = not_refractory && (vi > -45.f);
+    if (spiked) {
+        counts[i] += 1;
+        int slot = atomicAdd(future_count, 1);
+        future_queue[slot] = i;
+        vi = -52.f; gi = 0.f; refr = rfc_steps;
+    }
+    v[i] = vi; g[i] = gi; refractory[i] = refr;
+}
+'''
+
+# Event-driven scatter delivery: one warp per queued spiking neuron, lanes
+# splitting that neuron's out-edges (pre-major CSR, stride 32) and scattering
+# directly into each destination's conductance with atomicAdd, guarded by the
+# destination's (already-updated-this-substep) refractory state. The spike
+# count is read from device memory at kernel start (no host sync needed) and
+# the grid-stride loop covers exactly that many queued neurons, however many
+# there are -- unlike the dense designs, work here scales with actual spike
+# activity (~62/substep), not with n.
+_DELIVER_SCATTER_SOURCE = r'''
+extern "C" __global__
+void lif_deliver_scatter(
+    const long long* __restrict__ ptr, const int* __restrict__ post,
+    const float* __restrict__ weight, const int* __restrict__ queue,
+    const int* __restrict__ queue_count, const int* __restrict__ refractory,
+    float* g)
+{
+    int count = *queue_count;
     int lane = threadIdx.x & 31;
     int warps_per_block = blockDim.x >> 5;
     int global_warp = blockIdx.x * warps_per_block + (threadIdx.x >> 5);
     int num_warps = gridDim.x * warps_per_block;
-    for (int i = global_warp; i < n; i += num_warps) {
-        float partial = 0.f;
-        for (long long e = ptr[i] + lane; e < ptr[i + 1]; e += 32)
-            if (delivering[pre_idx[e]]) partial += weight[e];
-        for (int off = 16; off > 0; off >>= 1)
-            partial += __shfl_down_sync(0xffffffff, partial, off);
-        if (lane != 0) continue;
-        int refr = refractory[i]; refr = refr > 0 ? refr - 1 : 0;
-        bool not_refractory = (refr == 0);
-        float vi = v[i], gi = g[i];
-        if (not_refractory) {
-            float v_new = -52.f + (vi + 52.f) * av + drive[i] * (1.f - av) + gi * coupling;
-            gi = gi * ag;
-            vi = v_new;
+    for (int k = global_warp; k < count; k += num_warps) {
+        int i = queue[k];
+        for (long long e = ptr[i] + lane; e < ptr[i + 1]; e += 32) {
+            int j = post[e];
+            if (refractory[j] == 0) atomicAdd(&g[j], weight[e]);
         }
-        bool spiked = not_refractory && (vi > -45.f);
-        if (spiked) counts[i] += 1;
-        future_queue[i] = spiked;
-        if (not_refractory) gi += partial;
-        if (spiked) { vi = -52.f; gi = 0.f; refr = rfc_steps; }
-        v[i] = vi; g[i] = gi; refractory[i] = refr;
     }
 }
 '''
@@ -142,7 +169,6 @@ class GPUBrain(Brain):
         try:
             _configure_cuda_env()
             import cupy as cp
-            import scipy.sparse as sp
         except ImportError as e:
             raise RuntimeError(
                 'The GPU backend requires cupy. Install doom/requirements-gpu.txt '
@@ -152,28 +178,36 @@ class GPUBrain(Brain):
             raise RuntimeError('No CUDA device visible to cupy.')
         self._cp = cp
         n = self.n
-        # CSR as produced by doom/prepare.py is pre-major (row i = edges from
-        # neuron i); transpose once here to post-major so `weight_t.dot(x)`
-        # with x indexed by pre-synaptic neuron returns a post-indexed result.
-        pre_major = sp.csr_matrix((self.weight, self.post, self.ptr), shape=(n, n))
-        weight_t = pre_major.T.tocsr()
-        self._csr_ptr = cp.asarray(weight_t.indptr, dtype=cp.int64)
-        self._csr_pre = cp.asarray(weight_t.indices, dtype=cp.int32)
-        self._csr_weight = cp.asarray(weight_t.data, dtype=cp.float32)
-        self._kernel = cp.RawKernel(_FUSED_SUBSTEP_SOURCE, 'lif_substep_fused')
-        # block/grid size the total number of resident warps, not "one warp
-        # per row" -- the kernel's own grid-stride loop covers all n rows
-        # regardless of how many warps are launched; this many happens to
-        # keep every row covered without a stride wraparound too.
-        self._block = 256
-        self._grid = (n + self._block - 1) // self._block
+        # Native pre-major layout (doom/prepare.py's ptr/post/weight): row i
+        # is neuron i's out-edges, exactly what the scatter kernel needs --
+        # no transpose, unlike the dense designs' post-major gather layout.
+        self._csr_ptr = cp.asarray(self.ptr, dtype=cp.int64)
+        self._csr_post = cp.asarray(self.post, dtype=cp.int32)
+        self._csr_weight = cp.asarray(self.weight, dtype=cp.float32)
+        self._decay_kernel = cp.RawKernel(_DECAY_SPIKE_RESET_SOURCE, 'lif_decay_spike_reset')
+        self._deliver_kernel = cp.RawKernel(_DELIVER_SCATTER_SOURCE, 'lif_deliver_scatter')
+        self._decay_block = 256
+        self._decay_grid = (n + self._decay_block - 1) // self._decay_block
+        # Delivery grid is sized in warps, not by n -- it grid-strides over
+        # however many neurons are actually queued each substep (read from
+        # device memory at kernel start), so this many resident warps is
+        # simply "enough to keep the GPU busy," not "one per row."
+        self._deliver_block = 256
+        self._deliver_grid = max(1, (n // 32 + self._deliver_block - 1) // self._deliver_block)
         self.v = cp.asarray(self.v)
         self.g = cp.asarray(self.g)
         self.refractory = cp.asarray(self.refractory.astype(np.int32))
         self.drive = cp.asarray(self.drive)
         self._delay_steps = int(round(1.8 / dt))
         self._rfc_steps = int(round(2.2 / dt))
-        self._queue = cp.zeros((self._delay_steps + 1, n), dtype=cp.bool_)
+        slots = self._delay_steps + 1
+        # Index-list ring buffer (mirrors doom/engine.py's queue/queue_count):
+        # worst case one slot holds all n neurons, ~12.7MB total, trivial on
+        # a 6GB card. Zeroed once here; each slot's counter is zeroed again
+        # by _substep right after that slot is consumed, ready for reuse
+        # `slots` steps later.
+        self._queue = cp.zeros((slots, n), dtype=cp.int32)
+        self._queue_count = cp.zeros(slots, dtype=cp.int32)
         self._counts = cp.zeros(n, dtype=cp.int32)
         self._av = math.exp(-dt / 20)
         self._ag = math.exp(-dt / 5)
@@ -203,18 +237,25 @@ class GPUBrain(Brain):
         return counts, wall
 
     def _substep(self):
+        cp = self._cp
         slots = self._queue.shape[0]
         slot = self.cursor % slots
         future = (self.cursor + self._delay_steps) % slots
-        # future's row is a full overwrite (not accumulated), so it never
-        # needs a separate clear -- each of the `slots` rows is written
-        # exactly once (as `future`) and read exactly once (as `slot`,
-        # `delay_steps` substeps later) per cycle.
-        self._kernel((self._grid,), (self._block,), (
-            self._csr_ptr, self._csr_pre, self._csr_weight,
+        # Kernel 1 must complete before kernel 2 launches (same-stream
+        # ordering guarantees this): kernel 2 reads refractory as kernel 1
+        # just updated it, and reads future_queue/future_count as kernel 1
+        # is about to fill them for a *later* substep, never this one's
+        # delivery -- delivery here consumes `slot`, filled `delay_steps`
+        # substeps ago, not `future`.
+        self._decay_kernel((self._decay_grid,), (self._decay_block,), (
             self.v, self.g, self.refractory, self.drive,
-            self._queue[slot], self._queue[future], self._counts,
-            self._cp.float32(self._av), self._cp.float32(self._ag),
-            self._cp.float32(self._coupling), self._cp.int32(self._rfc_steps),
-            self._cp.int32(self.n)))
+            self._queue[future], self._queue_count[future:future + 1], self._counts,
+            cp.float32(self._av), cp.float32(self._ag),
+            cp.float32(self._coupling), cp.int32(self._rfc_steps), cp.int32(self.n)))
+        self._deliver_kernel((self._deliver_grid,), (self._deliver_block,), (
+            self._csr_ptr, self._csr_post, self._csr_weight,
+            self._queue[slot], self._queue_count[slot:slot + 1], self.refractory, self.g))
+        # Consumed slot's counter must be back at zero before this slot is
+        # reused as `future` `slots` substeps from now.
+        self._queue_count[slot] = 0
         self.cursor += 1
