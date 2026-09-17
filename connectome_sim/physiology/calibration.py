@@ -1,9 +1,20 @@
 """Independent physiological targets; no Doom performance is involved."""
+from doom_learning.circuit import DEFAULT_SPEC
 from .visual import VisualMemoryBrain
 
+# These currents/rates are Huang et al. 2024 Fig 1d/e baselines measured
+# specifically for MBON11 and PPL101 -- they do not transfer to a different
+# circuit_spec's cell types, so calibrated_brain refuses anything but the
+# default spec rather than silently mislabeling arbitrary cells as calibrated.
+_CALIBRATED_SPEC=DEFAULT_SPEC
 
-def calibrated_brain(eta=.001):
-    b=VisualMemoryBrain(eta=eta)
+
+def calibrated_brain(eta=.001,circuit_spec=None):
+    if circuit_spec is not None and circuit_spec!=_CALIBRATED_SPEC:
+        raise ValueError('This calibration (Huang et al. 2024 Fig 1d/e) is specific to '
+            f'{_CALIBRATED_SPEC!r}; it does not apply to circuit_spec={circuit_spec!r}. '
+            'Construct VisualMemoryBrain directly and calibrate that circuit independently.')
+    b=VisualMemoryBrain(eta=eta,circuit_spec=circuit_spec)
     b.tonic[b.circuit['mb']]=9.87
     # Best *observed* point in the recorded current sweep, not a bisection
     # interpolation: this recurrent spiking system is not monotonic in bias.

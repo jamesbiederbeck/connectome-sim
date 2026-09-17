@@ -32,14 +32,14 @@ def build():
 
 
 class MemoryBrain(NativeBrain):
-    def __init__(self,path=GRAPH,*,eta=.001,circuit=None,modulation_mask=None,tonic=None,dan_baseline_hz=None,kc_rest=-60.,adaptation_jump=8.,adaptation_tau=200.):
+    def __init__(self,path=GRAPH,*,eta=.001,circuit=None,circuit_spec=None,modulation_mask=None,tonic=None,dan_baseline_hz=None,kc_rest=-60.,adaptation_jump=8.,adaptation_tau=200.):
         super().__init__(path)
         self.build=build();self.library=C.CDLL(str(LIBRARY));self.advance=self.library.memory_advance
         self.advance.argtypes=[C.c_int]+[C.c_void_p]*11+[C.c_int,C.c_float]+[C.c_void_p]*5+[
             C.c_void_p,C.c_void_p,C.c_void_p,C.c_void_p,C.c_int]+[C.c_void_p]*4+[
             C.c_float,C.c_float,C.c_float,C.c_int,C.c_void_p,C.c_void_p,C.c_void_p,C.c_void_p,C.c_void_p,C.c_float,C.c_float]
         self.advance.restype=None
-        self.circuit=identify(self) if circuit is None else circuit
+        self.circuit=identify(self,spec=circuit_spec) if circuit is None else circuit
         if not math.isfinite(kc_rest) or not -80<=kc_rest<=-45:raise ValueError('Invalid KC resting potential')
         self.rest=np.full(self.n,-52.,dtype=np.float32);self.rest[self.circuit['kc']]=kc_rest;self.v[:]=self.rest
         if not math.isfinite(adaptation_jump) or adaptation_jump<0 or not math.isfinite(adaptation_tau) or adaptation_tau<=20:raise ValueError('Invalid adaptation parameters')
