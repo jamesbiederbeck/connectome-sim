@@ -46,6 +46,7 @@ doc for the measured numbers.
 
 Requires doom/requirements-gpu.txt and a CUDA GPU; not used by default.
 """
+import hashlib
 import math
 import os
 import time
@@ -161,6 +162,20 @@ void lif_deliver_scatter(
     }
 }
 '''
+
+
+# Analogous to doom/native.py's BUILD sidecar: an auditable record of exactly
+# which kernel code produced a run's output. There is no separate compiled
+# binary to hash here (cupy.RawKernel JIT-compiles this source via NVRTC at
+# construction time, not build time), so kernel_source_sha256 covers the two
+# CUDA source strings directly instead of a build artifact.
+GPU_BUILD = {
+    'model_revision': 'lif-gpu-event-driven-v1',
+    'kernel_source_sha256': hashlib.sha256(
+        (_DECAY_SPIKE_RESET_SOURCE + _DELIVER_SCATTER_SOURCE).encode()).hexdigest(),
+    'binary_sha256': None,
+    'compile_flags': ['JIT-compiled via cupy.RawKernel/NVRTC at GPUBrain construction time; no static binary artifact'],
+}
 
 
 class GPUBrain(Brain):
