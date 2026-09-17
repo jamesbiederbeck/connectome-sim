@@ -58,6 +58,18 @@ def export(dataset='malecns_v1'):
         if np.any(a[key] < 0) or np.any(a[key] >= n):
             raise ValueError(f'{key}: graph index out of bounds')
 
+    # The readout cells doom/prepare.py already identified, carried across so the
+    # device can report their firing without re-deriving cell identity. These are
+    # observation points only: nothing downstream of them feeds back into the
+    # simulation, and prepare.py's motor_interface caveat travels with them.
+    prepared = json.loads((source.parent / 'manifest.json').read_text())
+    readouts = [{'index': int(r['index']), 'id': str(r['id']),
+                 'type': str(r['type']), 'side': str(r['side'])}
+                for r in prepared['readouts']]
+    for r in readouts:
+        if not 0 <= r['index'] < n:
+            raise ValueError(f"readout {r['id']}: graph index out of bounds")
+
     manifest = {
         'dataset': dataset,
         'neurons': int(n),
@@ -68,10 +80,14 @@ def export(dataset='malecns_v1'):
         'byteorder': 'little',
         'source_npz_sha256': hashlib.sha256(source.read_bytes()).hexdigest(),
         'blobs': blobs,
+        'readouts': readouts,
+        'motor_interface': prepared['motor_interface'],
         'note': 'Full retained connectome. No edge cropping, pruning or reordering.',
     }
     (out / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
-    print(json.dumps({k: v for k, v in manifest.items() if k != 'blobs'}, indent=2))
+    summary = {k: v for k, v in manifest.items() if k not in ['blobs', 'readouts']}
+    summary['readouts'] = len(readouts)
+    print(json.dumps(summary, indent=2))
     return manifest
 
 
