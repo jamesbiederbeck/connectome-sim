@@ -4,10 +4,10 @@ boundary, and so richer models can be swapped in later without touching either
 game harness.
 
 The only implementation here today is a thin wrapper around
-doom.game.retinal_samples -- the exact, already-validated bilinear-sample-plus-
-sRGB-to-linear-luma transform doom/game.py and doom/server.py still call
-directly and unchanged. Nothing about Doom's numeric behavior is touched by
-this module.
+doom.photoreceptor.retinal_samples -- the exact, already-validated
+bilinear-sample-plus-sRGB-to-linear-luma transform, now factored into its own
+vizdoom-free module. doom/game.py re-exports it unchanged for existing
+callers. Nothing about Doom's numeric behavior is touched by this module.
 
 The interface exists for future work, not implemented here: a richer
 per-receptor model along the lines of ~/code/android/bugvision's drosophila
@@ -29,8 +29,8 @@ class PhotoreceptorModel:
 
 
 class BilinearLuminance(PhotoreceptorModel):
-    """Current behavior, unchanged. Wraps doom.game.retinal_samples verbatim."""
+    """Current behavior, unchanged. Wraps doom.photoreceptor.retinal_samples verbatim."""
 
     def sample(self, rgb, uv):
-        from doom.game import retinal_samples
+        from doom.photoreceptor import retinal_samples
         return retinal_samples(rgb, uv)
