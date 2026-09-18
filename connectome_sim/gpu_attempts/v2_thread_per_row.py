@@ -13,8 +13,8 @@ see docs/doom-gpu-kernel-review.md for the full measurement writeup.
 import math
 import time
 import numpy as np
-from doom.engine import Brain
-from doom.gpu import _configure_cuda_env
+from connectome_sim.engine import Brain
+from connectome_sim.gpu import _configure_cuda_env
 
 _FUSED_SUBSTEP_SOURCE = r'''
 extern "C" __global__

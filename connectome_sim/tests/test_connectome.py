@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from doom.connectome import exact_ids, index_edges
+from connectome_sim.connectome import exact_ids, index_edges
 
 
 def test_large_neuron_ids_keep_every_bit():
@@ -39,7 +39,7 @@ def test_duplicate_node_ids_fail_before_import():
 
 def test_explicit_male_glia_excluded_even_if_superclass_is_assigned():
     import pandas as pd
-    from doom.connectome import normalize_nodes
+    from connectome_sim.connectome import normalize_nodes
     frame=pd.DataFrame({'bodyId':[1,2,3],'superclass':['cb_intrinsic','cb_intrinsic',None],
       'statusLabel':['Reviewed']*3,'type':['test']*3,'status':['Glia','Traced','Orphan']})
     catalog,nodes=normalize_nodes('malecns_v1',frame)
@@ -47,7 +47,7 @@ def test_explicit_male_glia_excluded_even_if_superclass_is_assigned():
     assert catalog.loc[catalog.source_id.eq(1),'object_kind'].item()=='non_neuronal'
 
 
-from doom.transmitters import transmitter_signs
+from connectome_sim.transmitters import transmitter_signs
 
 def test_ambiguous_transmitters_are_preserved_and_sensitivity_is_local():
     names=['acetylcholine','gaba','histamine','glutamate','acetylcholine,dopamine',None,'dopamine','acetylcholine,gaba']

@@ -12,7 +12,7 @@ import json
 import time
 from pathlib import Path
 import numpy as np
-from doom.gpu import GPUBrain
+from connectome_sim.gpu import GPUBrain
 
 ROOT = Path(__file__).resolve().parents[1]
 

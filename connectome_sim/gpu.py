@@ -52,7 +52,7 @@ import os
 import time
 from pathlib import Path
 import numpy as np
-from doom.engine import Brain
+from connectome_sim.engine import Brain
 
 
 # dependency order matters: cublasLt/cublas before cusolver, nvjitlink/nvrtc
@@ -188,7 +188,7 @@ class GPUBrain(Brain):
             raise RuntimeError(
                 'The GPU backend requires cupy. Install doom/requirements-gpu.txt '
                 'into this environment (and its documented CUDA_PATH/LD_LIBRARY_PATH) '
-                'before using doom.gpu.GPUBrain.') from e
+                'before using connectome_sim.gpu.GPUBrain.') from e
         if cp.cuda.runtime.getDeviceCount() < 1:
             raise RuntimeError('No CUDA device visible to cupy.')
         self._cp = cp

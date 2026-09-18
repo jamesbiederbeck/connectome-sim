@@ -1,11 +1,11 @@
 """Unit coverage for the parameterized feedback-circuit selection in
-doom_learning/circuit.py, independent of the real MaleCNS graph."""
+connectome_sim/physiology/circuit.py, independent of the real MaleCNS graph."""
 import types
 import numpy as np
 import pandas as pd
 import pytest
-from doom_learning import circuit as circuit_module
-from doom_learning.circuit import DEFAULT_SPEC, MAX_DAN_CELLS, identify
+from connectome_sim.physiology import circuit as circuit_module
+from connectome_sim.physiology.circuit import DEFAULT_SPEC, MAX_DAN_CELLS, identify
 
 
 def synthetic_brain(monkeypatch, types_by_index):

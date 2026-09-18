@@ -11,7 +11,7 @@ def digest(path):
     return h.hexdigest()
 
 def download(dataset='malecns_v1'):
-    registry=json.loads((ROOT/'doom/datasets.json').read_text())
+    registry=json.loads((ROOT/'connectome_sim/datasets.json').read_text())
     files=registry['datasets'][dataset]['files']
     target=ROOT/'connectome_data'/dataset
     target.mkdir(parents=True,exist_ok=True)

@@ -19,8 +19,8 @@ import os
 import time
 from pathlib import Path
 import numpy as np
-from doom.engine import Brain
-from doom.gpu import _configure_cuda_env
+from connectome_sim.engine import Brain
+from connectome_sim.gpu import _configure_cuda_env
 
 
 # One warp (32 threads) per destination-neuron row: lanes split that row's

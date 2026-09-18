@@ -1,6 +1,6 @@
 import numpy as np
 import pytest
-from doom_learning_v6.brain import MemoryBrain
+from connectome_sim.physiology.brain import MemoryBrain
 
 
 def brain(tmp_path):

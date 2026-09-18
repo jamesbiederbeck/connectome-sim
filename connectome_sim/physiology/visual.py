@@ -8,7 +8,7 @@ channel or sensitivity is invented for R7 or untyped photoreceptors.
 """
 import math
 import numpy as np
-from doom_learning.common import annotations,digest
+from connectome_sim.physiology.common import annotations,digest
 from .brain import MemoryBrain
 
 
@@ -28,7 +28,7 @@ def projection(brain,a):
     xy=np.column_stack([hexes[:,0]-.5*hexes[:,1],np.sqrt(3)/2*hexes[:,1]])
     # Fit the original display projection from the existing R1-R6 anchors so
     # R8 does not get a separately stretched eye or arbitrary target position.
-    from doom_learning.common import GRAPH
+    from connectome_sim.physiology.common import GRAPH
     with np.load(GRAPH) as g:oldhex=g['hexes']
     oldxy=np.column_stack([oldhex[:,0]-.5*oldhex[:,1],np.sqrt(3)/2*oldhex[:,1]])
     uv=np.empty_like(xy)

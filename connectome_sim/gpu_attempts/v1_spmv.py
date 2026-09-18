@@ -13,8 +13,8 @@ doom/gpu.py.
 import math
 import time
 import numpy as np
-from doom.engine import Brain
-from doom.gpu import _configure_cuda_env
+from connectome_sim.engine import Brain
+from connectome_sim.gpu import _configure_cuda_env
 
 
 class GPUBrainSpMV(Brain):

@@ -126,5 +126,5 @@ def export(out_path):
 if __name__ == '__main__':
     import sys
     if len(sys.argv) != 2:
-        raise SystemExit('usage: python -m doom.export_glossary <out.json>')
+        raise SystemExit('usage: python -m connectome_sim.export_glossary <out.json>')
     export(sys.argv[1])

@@ -2,7 +2,7 @@
 from pathlib import Path
 import hashlib, json, os
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 GRAPH = ROOT / 'outputs/doom/malecns_v1/graph.npz'
 OUT = ROOT / 'outputs/doom-learning'
 
@@ -36,7 +36,7 @@ def capture_provenance(out,additional=()):
     import importlib.metadata, platform, shutil
     out=Path(out);snapshot=out/'source-snapshot';snapshot.mkdir(parents=True)
     sources={}
-    for folder in ['doom_learning','doom',*additional]:
+    for folder in ['doom_learning','doom','connectome_sim','connectome_sim/physiology',*additional]:
         for p in sorted((ROOT/folder).iterdir()):
             if p.suffix not in ['.py','.cpp']:continue
             relative=p.relative_to(ROOT);target=snapshot/relative;target.parent.mkdir(parents=True,exist_ok=True)

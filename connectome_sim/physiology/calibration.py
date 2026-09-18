@@ -1,5 +1,5 @@
 """Independent physiological targets; no Doom performance is involved."""
-from doom_learning.circuit import DEFAULT_SPEC
+from connectome_sim.physiology.circuit import DEFAULT_SPEC
 from .visual import VisualMemoryBrain
 
 # These currents/rates are Huang et al. 2024 Fig 1d/e baselines measured

@@ -8,7 +8,7 @@ def main():
     out=args.output or ROOT/'outputs/doom'/('libneural.dylib' if sys.platform=='darwin' else 'libneural.so')
     out.parent.mkdir(parents=True,exist_ok=True)
     temporary=out.with_suffix(out.suffix+'.partial')
-    source=ROOT/'doom/kernel.cpp'
+    source=ROOT/'connectome_sim/kernel.cpp'
     command=['clang++','-O3','-std=c++17','-shared','-fPIC',str(source),'-o',str(temporary)]
     subprocess.run(command,check=True)
     record={'kernel_source_sha256':hashlib.sha256(source.read_bytes()).hexdigest(),

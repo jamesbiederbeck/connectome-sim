@@ -13,7 +13,7 @@ import numpy as np
 
 
 ROOT = Path(__file__).resolve().parents[1]
-REGISTRY = ROOT / "doom/datasets.json"
+REGISTRY = ROOT / "connectome_sim/datasets.json"
 
 
 def exact_ids(values) -> np.ndarray:

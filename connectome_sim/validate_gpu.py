@@ -16,8 +16,8 @@ import json
 import time
 from pathlib import Path
 import numpy as np
-from doom.native import NativeBrain
-from doom.gpu import GPUBrain
+from connectome_sim.native import NativeBrain
+from connectome_sim.gpu import GPUBrain
 
 ROOT = Path(__file__).resolve().parents[1]
 THRESHOLD_MV = -45.0

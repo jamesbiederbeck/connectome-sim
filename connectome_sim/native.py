@@ -3,12 +3,12 @@ import ctypes as C
 from pathlib import Path
 import math,time,sys,os,json,hashlib
 import numpy as np
-from doom.engine import Brain
+from connectome_sim.engine import Brain
 ROOT=Path(__file__).resolve().parents[1]
 LIBRARY=Path(os.environ.get('DOOM_KERNEL_PATH',str(ROOT/'outputs/doom'/('libneural.dylib' if sys.platform=='darwin' else 'libneural.so'))))
 BUILD=json.loads(LIBRARY.with_suffix(LIBRARY.suffix+'.json').read_text())
-if BUILD['kernel_source_sha256']!=hashlib.sha256((ROOT/'doom/kernel.cpp').read_bytes()).hexdigest() or BUILD['binary_sha256']!=hashlib.sha256(LIBRARY.read_bytes()).hexdigest():
-    raise RuntimeError('Native model differs from reviewed source. Run python -m doom.build_kernel.')
+if BUILD['kernel_source_sha256']!=hashlib.sha256((ROOT/'connectome_sim/kernel.cpp').read_bytes()).hexdigest() or BUILD['binary_sha256']!=hashlib.sha256(LIBRARY.read_bytes()).hexdigest():
+    raise RuntimeError('Native model differs from reviewed source. Run python -m connectome_sim.build_kernel.')
 _lib=C.CDLL(str(LIBRARY))
 _f=_lib.neural_advance
 _f.argtypes=[C.c_int]+[C.c_void_p]*11+[C.c_int,C.c_float]+[C.c_void_p]*5
