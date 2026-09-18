@@ -70,6 +70,39 @@ def export(dataset='malecns_v1'):
         if not 0 <= r['index'] < n:
             raise ValueError(f"readout {r['id']}: graph index out of bounds")
 
+    # Flappy-circuit-specific additions, not part of the core Doom readout set
+    # above: the 12-region motor-neuron sprite map (flappy/fly_regions.py) and
+    # the haltere afferent clusters a touch pad can stimulate
+    # (flappy/haltere_cluster_sweep.py's grouping). Both are read-only index
+    # lists into the same graph; see those modules' docstrings for how each
+    # region/cluster boundary was derived and what it does and doesn't claim.
+    from flappy.fly_regions import REGION_INFO, compute_regions
+    from flappy.haltere_cluster_sweep import haltere_clusters
+    from flappy.circuit import haltere_afferents
+
+    class _IdsOnly:
+        """haltere_clusters/haltere_afferents only ever read brain.ids -- avoid
+        loading the native kernel just to get a graph index/bodyId lookup."""
+        def __init__(self, ids): self.ids = ids
+    brain = _IdsOnly(a['ids'])
+    region_members = compute_regions(a['ids'])
+    motor_regions = [{'id': region_id, 'hex': hex_color, 'description': desc,
+                       'indices': [int(i) for i in region_members[region_id]]}
+                      for region_id, (hex_color, desc) in REGION_INFO.items()]
+    for r in motor_regions:
+        for i in r['indices']:
+            if not 0 <= i < n:
+                raise ValueError(f"region {r['id']}: graph index out of bounds")
+
+    clusters = haltere_clusters(brain)
+    haltere_idx = set(int(i) for i in haltere_afferents(brain))
+    haltere_clusters_out = [{'name': name, 'indices': [int(i) for i in idx]}
+                             for name, idx in clusters.items()]
+    for c in haltere_clusters_out:
+        for i in c['indices']:
+            if i not in haltere_idx:
+                raise ValueError(f"haltere cluster {c['name']}: index {i} is not a haltere afferent")
+
     manifest = {
         'dataset': dataset,
         'neurons': int(n),
@@ -82,11 +115,15 @@ def export(dataset='malecns_v1'):
         'blobs': blobs,
         'readouts': readouts,
         'motor_interface': prepared['motor_interface'],
+        'motor_regions': motor_regions,
+        'haltere_clusters': haltere_clusters_out,
         'note': 'Full retained connectome. No edge cropping, pruning or reordering.',
     }
     (out / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
-    summary = {k: v for k, v in manifest.items() if k not in ['blobs', 'readouts']}
+    summary = {k: v for k, v in manifest.items() if k not in ['blobs', 'readouts', 'motor_regions', 'haltere_clusters']}
     summary['readouts'] = len(readouts)
+    summary['motor_regions'] = {r['id']: len(r['indices']) for r in motor_regions}
+    summary['haltere_clusters'] = {c['name']: len(c['indices']) for c in haltere_clusters_out}
     print(json.dumps(summary, indent=2))
     return manifest
 
