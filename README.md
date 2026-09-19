@@ -21,7 +21,7 @@ this repo's own root.
 | Path | Contents |
 | --- | --- |
 | `engine.py`, `native.py`, `gpu.py`, `kernel.cpp` | The `Brain` base class and its native/GPU backends |
-| `connectome.py`, `transmitters.py`, `datasets.json`, `download_dataset.py` | MaleCNS importer and dataset registry |
+| `connectome.py`, `prepare.py`, `transmitters.py`, `datasets.json`, `download_dataset.py` | MaleCNS importer, graph compilation and dataset registry |
 | `provenance.py`, `audit_data.py`, `export_glossary.py`, `export_android.py`, `build_kernel.py` | Build, audit and export tooling |
 | `vision/` | Game-agnostic photoreceptor-sampling interface |
 | `physiology/` | Generic dopamine-gated-plasticity code (calibrated against Huang et al. 2024 targets); the ViZDoom-specific experiment harness around it stays in the DOOMFLY-fork repo |

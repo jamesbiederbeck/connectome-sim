@@ -29,7 +29,7 @@ CONTRACT = [
 
 
 def export(dataset='malecns_v1'):
-    source = ROOT / 'outputs/doom' / dataset / 'graph.npz'
+    source = ROOT / 'outputs/connectome_sim' / dataset / 'graph.npz'
     out = source.parent / 'android'
     out.mkdir(parents=True, exist_ok=True)
     a = np.load(source)
@@ -58,7 +58,7 @@ def export(dataset='malecns_v1'):
         if np.any(a[key] < 0) or np.any(a[key] >= n):
             raise ValueError(f'{key}: graph index out of bounds')
 
-    # The readout cells doom/prepare.py already identified, carried across so the
+    # The readout cells prepare.py already identified, carried across so the
     # device can report their firing without re-deriving cell identity. These are
     # observation points only: nothing downstream of them feeds back into the
     # simulation, and prepare.py's motor_interface caveat travels with them.

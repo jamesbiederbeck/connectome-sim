@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 THRESHOLD_MV = -45.0
 
 def run(ticks, dataset, seed, near_threshold_eps):
-    path = ROOT / 'outputs/doom' / dataset / 'graph.npz'
+    path = ROOT / 'outputs/connectome_sim' / dataset / 'graph.npz'
     native, gpu = NativeBrain(path), GPUBrain(path)
     n = native.n
     rng = np.random.default_rng(seed)

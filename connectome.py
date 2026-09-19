@@ -163,7 +163,7 @@ def import_graph(dataset_id: str = "malecns_v1") -> dict:
               "remaining_gaps": ["Receptor-dependent synapse dynamics and neuromodulation",
                                  "Calibrated retinal dynamics", "Validated learning and controller interpretation"]}
     (output / "report.json").write_text(json.dumps(report, indent=2) + "\n")
-    public_report = ROOT / "outputs/doom" / "connectome-import.json"
+    public_report = ROOT / "outputs/connectome_sim" / "connectome-import.json"
     public_report.parent.mkdir(parents=True, exist_ok=True)
     public_report.write_text(json.dumps(report, indent=2) + "\n")
     return report

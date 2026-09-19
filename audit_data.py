@@ -53,7 +53,7 @@ def main():
         total['weight_one_edges'] += int((count[keep] == 1).sum())
         total['self_edges'] += int((i[keep] == j[keep]).sum())
     print('All raw edge batches match normalized export.', flush=True)
-    graph = np.load(ROOT/'outputs/doom/malecns_v1/graph.npz')
+    graph = np.load(ROOT/'outputs/connectome_sim/malecns_v1/graph.npz')
     np.testing.assert_array_equal(graph['ids'], ids)
     table = normalized.read_all()
     pre, post, count = [table.column(c).to_numpy() for c in ['pre_index','post_index','synapse_count']]
@@ -69,21 +69,21 @@ def main():
     assert a.iloc[graph['lamina']].type.isin(['L1','L2','L3','L5']).all()
     assert a.iloc[graph['sugar']].type.eq('LB3c').all()
     assert np.isfinite(graph['uv']).all() and ((graph['uv'] >= 0) & (graph['uv'] <= 1)).all()
-    manifest = json.loads((ROOT/'outputs/doom/malecns_v1/manifest.json').read_text())
+    manifest = json.loads((ROOT/'outputs/connectome_sim/malecns_v1/manifest.json').read_text())
     for r in manifest['readouts']:
         assert str(ids[r['index']]) == r['id']
         assert a.iloc[r['index']].type == r['type']
         assert a.iloc[r['index']].somaSide == r['side']
     report = dict(passed=True, checked_at=time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
       dataset='MaleCNS v1.0 male brain and VNC', neurons=len(ids), retained_glia=0,
-      source_sha256=hashes, graph_sha256=digest(ROOT/'outputs/doom/malecns_v1/graph.npz'),
+      source_sha256=hashes, graph_sha256=digest(ROOT/'outputs/connectome_sim/malecns_v1/graph.npz'),
       edge_checks=total, all_source_rows_checked=True, all_runtime_edges_checked=True,
       checks=['Source SHA-256 and sizes match lock','Exact source neuron IDs and cell types',
         'Consensus neurotransmitter join','Every source edge rejoined independently using pandas index',
         'Every normalized endpoint and contact count','Every runtime CSR endpoint and signed weight',
         'Readout IDs, types and sides','Sensory cell classes and UV bounds'],
       biological_dynamics_validated=False)
-    out = ROOT/'outputs/doom/audit/data-integrity.json'
+    out = ROOT/'outputs/connectome_sim/audit/data-integrity.json'
     out.write_text(json.dumps(report, indent=2)+'\n')
     print(json.dumps(report, indent=2))
 

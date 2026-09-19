@@ -17,7 +17,7 @@ from connectome_sim.gpu import GPUBrain
 ROOT = Path(__file__).resolve().parents[1]
 
 def run(ticks, dataset, seed, warmup):
-    path = ROOT / 'outputs/doom' / dataset / 'graph.npz'
+    path = ROOT / 'outputs/connectome_sim' / dataset / 'graph.npz'
     brain = GPUBrain(path)
     rng = np.random.default_rng(seed)
     retina_n = len(brain.retina)

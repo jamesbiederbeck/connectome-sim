@@ -25,7 +25,7 @@ stream (ordering matters and is guaranteed by same-stream sequencing):
 2. `lif_deliver_scatter` -- event-driven: reads the *current* slot's spike
    count directly from device memory (no host sync) and grid-strides one
    warp per queued spiking neuron over the graph's native **pre-major**
-   CSR (ptr/post/weight exactly as doom/prepare.py produces them -- no
+   CSR (ptr/post/weight exactly as prepare.py produces them -- no
    transpose needed, unlike the dense designs' post-major gather layout),
    scattering `atomicAdd(&g[post[e]], weight[e])` into each destination,
    guarded by that destination's refractory state. Runs strictly after
@@ -193,7 +193,7 @@ class GPUBrain(Brain):
             raise RuntimeError('No CUDA device visible to cupy.')
         self._cp = cp
         n = self.n
-        # Native pre-major layout (doom/prepare.py's ptr/post/weight): row i
+        # Native pre-major layout (prepare.py's ptr/post/weight): row i
         # is neuron i's out-edges, exactly what the scatter kernel needs --
         # no transpose, unlike the dense designs' post-major gather layout.
         self._csr_ptr = cp.asarray(self.ptr, dtype=cp.int64)

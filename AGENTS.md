@@ -22,3 +22,11 @@
   numerically equivalent to each other; any GPU-backend change belongs here,
   not in a consumer repo, since this is also the basis of the open PR back to
   `nftechie/doomfly`.
+
+- Graph and kernel artifacts live under the consuming repo's
+  `outputs/connectome_sim/`, not `outputs/doom/`. The old name was a DOOMFLY
+  leftover; this engine is not Doom-specific and is consumed by several
+  harnesses. The kernel path override is `CONNECTOME_KERNEL_PATH`.
+- `prepare.py` belongs here, not in a harness: it is the second half of the
+  import pipeline that `engine.py` validates the output of. Keep its retinal
+  projection and readout selection parameterised so no consumer has to fork it.

@@ -3,7 +3,7 @@ from pathlib import Path
 import hashlib, json, os
 
 ROOT = Path(__file__).resolve().parents[2]
-GRAPH = ROOT / 'outputs/doom/malecns_v1/graph.npz'
+GRAPH = ROOT / 'outputs/connectome_sim/malecns_v1/graph.npz'
 OUT = ROOT / 'outputs/doom-learning'
 
 

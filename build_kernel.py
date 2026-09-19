@@ -5,7 +5,7 @@ ROOT=Path(__file__).resolve().parents[1]
 def main():
     p=argparse.ArgumentParser();p.add_argument('--output',type=Path)
     args=p.parse_args()
-    out=args.output or ROOT/'outputs/doom'/('libneural.dylib' if sys.platform=='darwin' else 'libneural.so')
+    out=args.output or ROOT/'outputs/connectome_sim'/('libneural.dylib' if sys.platform=='darwin' else 'libneural.so')
     out.parent.mkdir(parents=True,exist_ok=True)
     temporary=out.with_suffix(out.suffix+'.partial')
     source=ROOT/'connectome_sim/kernel.cpp'

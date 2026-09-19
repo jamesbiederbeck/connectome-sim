@@ -34,7 +34,7 @@ class GPUBrainSpMV(Brain):
             raise RuntimeError('No CUDA device visible to cupy.')
         self._cp = cp
         n = self.n
-        # CSR as produced by doom/prepare.py is pre-major (row i = edges from
+        # CSR as produced by prepare.py is pre-major (row i = edges from
         # neuron i); transpose once here to post-major so `weight_t.dot(x)`
         # with x indexed by pre-synaptic neuron returns a post-indexed result.
         pre_major = sp.csr_matrix((self.weight, self.post, self.ptr), shape=(n, n))
