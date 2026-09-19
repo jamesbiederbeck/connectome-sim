@@ -29,6 +29,20 @@ this repo's own root.
 | `licenses/` | Third-party notices for material cited here (MaleCNS CC-BY-4.0, Shiu LIF-framework MIT) |
 | `tests/` | Numerical and unit checks for the above |
 
+## Where to run this from
+
+This repo is not run from its own root. It is designed to be mounted at a
+consuming repo's root as `connectome_sim/`, and it resolves every path relative
+to *that* root: `prepare.py` takes `parents[1]`, `physiology/common.py` takes
+`parents[2]`, and both land one level above this checkout. So commands are
+`python -m connectome_sim.prepare` from the consumer, which reads
+`connectome_data/` and writes `outputs/connectome_sim/` there.
+
+Cloned standalone, those paths resolve to whatever directory happens to contain
+the clone. That is fine for reading the code or running the unit tests, and
+wrong for anything that touches data — so if you want to run the engine, start
+from one of the consumers below.
+
 ## How the repos relate
 
 This repo is the shared engine. It has no harness of its own: each consumer
