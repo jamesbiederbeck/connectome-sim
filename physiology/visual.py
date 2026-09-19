@@ -74,7 +74,7 @@ class VisualMemoryBrain(MemoryBrain):
                 n=min(100,ticks);c,t=self.rgb_step(frame,n*self.dt,**kwargs);total+=c;wall+=t;ticks-=n
             self.counts[:]=total
             return total,wall
-        from doom.game import retinal_samples
+        from connectome_sim.photoreceptor import retinal_samples
         frame=np.asarray(frame)
         if frame.ndim!=3 or frame.shape[2]!=3 or frame.dtype!=np.uint8:raise ValueError('RGB uint8 required')
         h,w=frame.shape[:2]
