@@ -122,6 +122,17 @@ class Brain:
                 if ix.ndim!=1 or np.any(ix<0) or np.any(ix>=self.n) or not np.isfinite(amplitude).all() or amplitude.shape not in [(),ix.shape]:
                     raise ValueError('Invalid external stimulation')
                 self.drive[ix]+=amplitude
+                # The kernel only integrates cells in the active set, which is
+                # seeded with retina/lamina/sugar alone -- so an injected
+                # current into anything else (every sensory afferent, for
+                # instance) is silently ignored until some synapse happens to
+                # recruit that cell. kernel.cpp:26 awakens any cell whose drive
+                # changed; this is the same thing for this backend. Without it
+                # the two backends disagree by three orders of magnitude on the
+                # stimulated cells' own firing.
+                for i in ix.tolist():
+                    if self.active_flag[i]==0:
+                        self.active_flag[i]=1;self.active[self.nactive[0]]=i;self.nactive[0]+=1
         self.counts.fill(0)
         start=time.perf_counter()
         self.cursor=advance(self.ptr,self.post,self.weight,self.v,self.g,self.refractory,self.drive,
