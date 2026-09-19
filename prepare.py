@@ -8,9 +8,10 @@ import pyarrow.ipc as ipc
 from scipy.sparse import csr_matrix
 from connectome_sim.transmitters import transmitter_signs
 
-# This module lives in the connectome_sim submodule, mounted at the consuming repo's
-# root, so the repo root is two levels up -- matching physiology/common.py's ROOT.
-ROOT=Path(__file__).resolve().parents[2]
+# connectome_sim/ is mounted at the consuming repo's root, so the repo root is one
+# level up from this file. (physiology/common.py sits a directory deeper and uses
+# parents[2]; both resolve to the same repo root.)
+ROOT=Path(__file__).resolve().parents[1]
 
 # The DOOMFLY controller's descending neurons. Consumers that decode a different
 # population pass their own list, or select at runtime via physiology.common.annotations.
