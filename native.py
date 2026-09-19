@@ -14,8 +14,14 @@ _f=_lib.neural_advance
 _f.argtypes=[C.c_int]+[C.c_void_p]*11+[C.c_int,C.c_float]+[C.c_void_p]*5
 _f.restype=None
 class NativeBrain(Brain):
-    def __init__(self,path,dt=.1):
-        super().__init__(path,dt)
+    def __init__(self,path,dt=.1,tau_m=20.,tau_s=5.):
+        super().__init__(path,dt,tau_m,tau_s)
+        if not self.reference_dynamics:
+            raise ValueError(
+                'This backend compiles the 20 ms / 5 ms time constants into its '
+                'kernel and cannot honour tau_m/tau_s. Use the numba Brain for '
+                'non-reference dynamics, or extend the kernel signature.')
+
         self.previous_drive=np.zeros(self.n,dtype=np.float32)
         self.last=np.full(self.n,-1,dtype=np.int64)
     def step(self,luminance,duration_ms,sugar=False,lamina_bias=12.0,stimulation=None):

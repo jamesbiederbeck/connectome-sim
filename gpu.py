@@ -179,8 +179,13 @@ GPU_BUILD = {
 
 
 class GPUBrain(Brain):
-    def __init__(self, path, dt=.1):
-        super().__init__(path, dt)
+    def __init__(self, path, dt=.1, tau_m=20., tau_s=5.):
+        super().__init__(path, dt, tau_m, tau_s)
+        if not self.reference_dynamics:
+            raise ValueError(
+                'This backend compiles the 20 ms / 5 ms time constants into its '
+                'kernel and cannot honour tau_m/tau_s. Use the numba Brain for '
+                'non-reference dynamics, or extend the kernel signature.')
         try:
             _configure_cuda_env()
             import cupy as cp

@@ -11,8 +11,8 @@ import numpy as np
 from numba import njit
 
 @njit(cache=True)
-def advance(ptr,post,weight,v,g,refractory,drive,queue,queue_count,cursor,steps,dt,counts,active,active_flag,nactive):
-    av=math.exp(-dt/20); ag=math.exp(-dt/5)
+def advance(ptr,post,weight,v,g,refractory,drive,queue,queue_count,cursor,steps,dt,counts,active,active_flag,nactive,tau_m=20.,tau_s=5.):
+    av=math.exp(-dt/tau_m); ag=math.exp(-dt/tau_s)
     coupling=(av-ag)/3
     delay_slots=queue.shape[0]
     for step in range(steps):
@@ -48,8 +48,28 @@ def advance(ptr,post,weight,v,g,refractory,drive,queue,queue_count,cursor,steps,
     return cursor
 
 class Brain:
-    def __init__(self,path,dt=.1):
+    def __init__(self,path,dt=.1,tau_m=20.,tau_s=5.):
+        """tau_m/tau_s are the membrane and synaptic time constants in ms.
+
+        The defaults reproduce the reference model exactly and must not be
+        changed as a convenience: `tests/test_doom_reference.py` validates this
+        kernel against an independent Brian2 oracle built with 20 ms / 5 ms, and
+        every published result from this engine assumes them.
+
+        They are adjustable because those constants make the model a low-pass
+        filter far slower than a wingbeat: at Drosophila's ~218 Hz (4.59 ms
+        period), a 20 ms membrane passes ~3.6% of an input modulation, lagged
+        ~88 degrees, and each 1.8 ms synaptic delay rotates phase by ~141
+        degrees. Any question about spike timing within a wingbeat -- haltere
+        phase codes, stroke-locked steering -- is unanswerable at the defaults,
+        and silently so: the run completes and reports a null.
+
+        A run with non-default values is no longer the audited Shiu-equivalent
+        model. Say so wherever its results appear.
+        """
         if dt != .1: raise ValueError('This audited kernel supports only dt=0.1 ms.')
+        if not (math.isfinite(tau_m) and math.isfinite(tau_s)) or tau_m<=0 or tau_s<=0:
+            raise ValueError('Membrane and synaptic time constants must be positive and finite.')
         a=np.load(path)
         for k in ['ptr','post','weight','ids','retina','uv','lamina','sugar','superclass']:
             setattr(self,k,a[k])
@@ -63,7 +83,9 @@ class Brain:
         for x in [self.post,self.retina,self.lamina,self.sugar]:
             if np.any(x<0) or np.any(x>=n): raise ValueError('Graph index out of bounds')
         if self.uv.shape!=(len(self.retina),2) or not np.isfinite(self.uv).all() or np.any(self.uv<0) or np.any(self.uv>1): raise ValueError('Invalid receptor UV coordinates')
-        self.dt=dt; self.n=len(self.ids); self.cursor=0
+        self.dt=dt; self.tau_m=float(tau_m); self.tau_s=float(tau_s)
+        self.reference_dynamics=(self.tau_m==20. and self.tau_s==5.)
+        self.n=len(self.ids); self.cursor=0
         self.v=np.full(self.n,-52,dtype=np.float32);self.g=np.zeros(self.n,dtype=np.float32)
         self.drive=np.zeros(self.n,dtype=np.float32); self.refractory=np.zeros(self.n,dtype=np.int16)
         self.queue=np.zeros((int(round(1.8/dt))+1,self.n),dtype=np.int32)
@@ -75,7 +97,7 @@ class Brain:
         self.active[:len(initial)]=initial;self.active_flag[initial]=1
         self.nactive=np.asarray([len(initial)],dtype=np.int32)
         self.total_spikes=0;self.sim_ms=0
-    def step(self,luminance,duration_ms,sugar=False,lamina_bias=12.0):
+    def step(self,luminance,duration_ms,sugar=False,lamina_bias=12.0,stimulation=None):
         if len(luminance)!=len(self.retina) or not np.all(np.isfinite(luminance)):
             raise ValueError('A finite luminance sample is required for every mapped receptor')
         if not math.isfinite(duration_ms) or not math.isfinite(lamina_bias): raise ValueError('Finite duration and current required')
@@ -91,10 +113,20 @@ class Brain:
         self.drive[self.lamina]=lamina_bias
         self.drive[self.retina]=30*self.luminance/(.02+self.luminance)
         if sugar:self.drive[self.sugar]=30
+        if stimulation is not None:
+            # Same host-side external current the native and GPU backends take,
+            # so an experiment can use this backend's adjustable time constants
+            # without also switching how it injects current.
+            for indices,current in (stimulation if isinstance(stimulation,list) else [stimulation]):
+                ix=np.asarray(indices,dtype=np.int32);amplitude=np.asarray(current,dtype=np.float32)
+                if ix.ndim!=1 or np.any(ix<0) or np.any(ix>=self.n) or not np.isfinite(amplitude).all() or amplitude.shape not in [(),ix.shape]:
+                    raise ValueError('Invalid external stimulation')
+                self.drive[ix]+=amplitude
         self.counts.fill(0)
         start=time.perf_counter()
         self.cursor=advance(self.ptr,self.post,self.weight,self.v,self.g,self.refractory,self.drive,
-          self.queue,self.queue_count,self.cursor,steps,self.dt,self.counts,self.active,self.active_flag,self.nactive)
+          self.queue,self.queue_count,self.cursor,steps,self.dt,self.counts,self.active,self.active_flag,self.nactive,
+          self.tau_m,self.tau_s)
         elapsed=time.perf_counter()-start
         self.total_spikes+=int(self.counts.sum());self.sim_ms+=steps*self.dt
         return self.counts.copy(),elapsed
