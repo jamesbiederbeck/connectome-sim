@@ -1,7 +1,7 @@
 """Build atomically; bind a native binary to its exact reviewed source."""
 import argparse, hashlib, json, subprocess, sys
 from pathlib import Path
-ROOT=Path(__file__).resolve().parents[1]
+ROOT=Path(__file__).absolute().parents[1]
 def main():
     p=argparse.ArgumentParser();p.add_argument('--output',type=Path)
     args=p.parse_args()

@@ -18,7 +18,7 @@ import json
 import re
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).absolute().parents[1]
 SOURCE = ROOT / 'docs/glossary.md'
 
 # Display type -> the glossary term that documents it, where the two differ.

@@ -7,7 +7,7 @@ import pyarrow as pa
 import pyarrow.feather as feather
 import pyarrow.ipc as ipc
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).absolute().parents[1]
 
 def digest(path):
     h = hashlib.sha256()

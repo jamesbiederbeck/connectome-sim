@@ -11,7 +11,7 @@ from connectome_sim.transmitters import transmitter_signs
 # connectome_sim/ is mounted at the consuming repo's root, so the repo root is one
 # level up from this file. (physiology/common.py sits a directory deeper and uses
 # parents[2]; both resolve to the same repo root.)
-ROOT=Path(__file__).resolve().parents[1]
+ROOT=Path(__file__).absolute().parents[1]
 
 # The DOOMFLY controller's descending neurons. Consumers that decode a different
 # population pass their own list, or select at runtime via physiology.common.annotations.

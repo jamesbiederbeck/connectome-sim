@@ -19,7 +19,7 @@ import numpy as np
 from connectome_sim.native import NativeBrain
 from connectome_sim.gpu import GPUBrain
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).absolute().parents[1]
 THRESHOLD_MV = -45.0
 
 def run(ticks, dataset, seed, near_threshold_eps):

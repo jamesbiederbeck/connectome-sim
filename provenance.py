@@ -1,7 +1,7 @@
 """Public reproducibility metadata; never includes environment variables."""
 import hashlib,json
 from pathlib import Path
-ROOT=Path(__file__).resolve().parents[1]
+ROOT=Path(__file__).absolute().parents[1]
 def sha(path):
     h=hashlib.sha256()
     with path.open('rb') as f:

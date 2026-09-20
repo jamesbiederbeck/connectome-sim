@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 from connectome_sim.gpu import GPUBrain
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).absolute().parents[1]
 
 def run(ticks, dataset, seed, warmup):
     path = ROOT / 'outputs/connectome_sim' / dataset / 'graph.npz'

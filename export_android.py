@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 import numpy as np
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).absolute().parents[1]
 
 # Exactly the arrays doom/engine.py's Brain.__init__ requires, with the dtype
 # it validates each one against. 'superclass' and the provenance arrays stay

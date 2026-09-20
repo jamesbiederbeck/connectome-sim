@@ -2,7 +2,7 @@
 import argparse,hashlib,json,urllib.request
 from pathlib import Path
 
-ROOT=Path(__file__).resolve().parents[1]
+ROOT=Path(__file__).absolute().parents[1]
 
 def digest(path):
     h=hashlib.sha256()
