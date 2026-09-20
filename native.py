@@ -4,6 +4,7 @@ from pathlib import Path
 import math,time,sys,os,json,hashlib
 import numpy as np
 from connectome_sim.engine import Brain
+from connectome_sim.photoreceptor import adapted_drive
 ROOT=Path(__file__).resolve().parents[1]
 LIBRARY=Path(os.environ.get('CONNECTOME_KERNEL_PATH',str(ROOT/'outputs/connectome_sim'/('libneural.dylib' if sys.platform=='darwin' else 'libneural.so'))))
 BUILD=json.loads(LIBRARY.with_suffix(LIBRARY.suffix+'.json').read_text())
@@ -30,7 +31,7 @@ class NativeBrain(Brain):
         steps=int(round(duration_ms/self.dt))
         if steps<1:raise ValueError('Duration too short')
         self.luminance+=(1-math.exp(-steps*self.dt/10))*(np.clip(luminance,0,1)-self.luminance)
-        self.drive.fill(0);self.drive[self.lamina]=lamina_bias;self.drive[self.retina]=30*self.luminance/(.02+self.luminance)
+        self.drive.fill(0);self.drive[self.lamina]=lamina_bias;self.drive[self.retina]=adapted_drive(self.luminance,self.retinal_adaptation,steps*self.dt,tau_ms=self.retinal_adaptation_ms)
         if sugar:self.drive[self.sugar]=30
         if stimulation is not None:
             # Same external-current mechanism doom_learning_v6 uses for PPL101

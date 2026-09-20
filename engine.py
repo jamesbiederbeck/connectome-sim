@@ -8,6 +8,7 @@ This does not model realistic ion channels, receptors, or learning.
 import math
 import time
 import numpy as np
+from connectome_sim.photoreceptor import ADAPTATION_MS,DARK_SEMISATURATION,adapted_drive
 from numba import njit
 
 @njit(cache=True)
@@ -92,6 +93,10 @@ class Brain:
         self.queue_count=np.zeros(self.queue.shape[0],dtype=np.int32)
         self.counts=np.zeros(self.n,dtype=np.int32)
         self.luminance=np.zeros(len(self.retina),dtype=np.float32)
+        # Photoreceptor operating point; see connectome_sim/photoreceptor.py.
+        # Set retinal_adaptation_ms=None to restore the fixed semisaturation.
+        self.retinal_adaptation=np.full(len(self.retina),DARK_SEMISATURATION,dtype=np.float32)
+        self.retinal_adaptation_ms=ADAPTATION_MS
         self.active=np.zeros(self.n,dtype=np.int32);self.active_flag=np.zeros(self.n,dtype=np.uint8)
         initial=np.unique(np.r_[self.retina,self.lamina,self.sugar])
         self.active[:len(initial)]=initial;self.active_flag[initial]=1
@@ -111,7 +116,7 @@ class Brain:
         # Tonic current is needed to represent graded lamina activity under
         # inhibitory histaminergic input. It is not a locomotion command.
         self.drive[self.lamina]=lamina_bias
-        self.drive[self.retina]=30*self.luminance/(.02+self.luminance)
+        self.drive[self.retina]=adapted_drive(self.luminance,self.retinal_adaptation,steps*self.dt,tau_ms=self.retinal_adaptation_ms)
         if sugar:self.drive[self.sugar]=30
         if stimulation is not None:
             # Same host-side external current the native and GPU backends take,

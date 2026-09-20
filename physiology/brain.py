@@ -4,6 +4,7 @@ import hashlib,json,math,subprocess,sys,time
 from pathlib import Path
 import numpy as np
 from connectome_sim.native import NativeBrain
+from connectome_sim.photoreceptor import adapted_drive
 from connectome_sim.physiology.common import ROOT, GRAPH, OUT, digest, save_json
 from connectome_sim.physiology.circuit import identify
 
@@ -32,12 +33,12 @@ def build():
 
 
 class MemoryBrain(NativeBrain):
-    def __init__(self,path=GRAPH,*,eta=.001,circuit=None,circuit_spec=None,modulation_mask=None,tonic=None,dan_baseline_hz=None,kc_rest=-60.,adaptation_jump=8.,adaptation_tau=200.):
+    def __init__(self,path=GRAPH,*,eta=.001,circuit=None,circuit_spec=None,modulation_mask=None,tonic=None,dan_baseline_hz=None,kc_rest=-60.,adaptation_jump=8.,adaptation_tau=200.,adaptation_mask=None):
         super().__init__(path)
         self.build=build();self.library=C.CDLL(str(LIBRARY));self.advance=self.library.memory_advance
         self.advance.argtypes=[C.c_int]+[C.c_void_p]*11+[C.c_int,C.c_float]+[C.c_void_p]*5+[
             C.c_void_p,C.c_void_p,C.c_void_p,C.c_void_p,C.c_int]+[C.c_void_p]*4+[
-            C.c_float,C.c_float,C.c_float,C.c_int,C.c_void_p,C.c_void_p,C.c_void_p,C.c_void_p,C.c_void_p,C.c_float,C.c_float]
+            C.c_float,C.c_float,C.c_float,C.c_int,C.c_void_p,C.c_void_p,C.c_void_p,C.c_void_p,C.c_void_p,C.c_float,C.c_float,C.c_void_p]
         self.advance.restype=None
         self.circuit=identify(self,spec=circuit_spec) if circuit is None else circuit
         if not math.isfinite(kc_rest) or not -80<=kc_rest<=-45:raise ValueError('Invalid KC resting potential')
@@ -45,6 +46,13 @@ class MemoryBrain(NativeBrain):
         if not math.isfinite(adaptation_jump) or adaptation_jump<0 or not math.isfinite(adaptation_tau) or adaptation_tau<=20:raise ValueError('Invalid adaptation parameters')
         self.adaptation=np.zeros(self.n,dtype=np.float32)
         self.adaptation_jump=float(adaptation_jump);self.adaptation_tau=float(adaptation_tau)
+        # Which cells get the adaptation jump. Defaults to the KC mask, which is
+        # what the kernel hard-coded before this became a parameter, so an
+        # unmodified caller sees identical dynamics. Widening it is how a caller
+        # asks for adaptation outside the mushroom body.
+        self.adaptation_mask=(np.asarray(self.circuit['kc_mask'],dtype=np.uint8).copy() if adaptation_mask is None
+                              else np.asarray(adaptation_mask,dtype=np.uint8).copy())
+        if self.adaptation_mask.shape!=(self.n,) or np.any(self.adaptation_mask>1):raise ValueError('Invalid adaptation mask')
         if modulation_mask is None:
             import pyarrow.feather as feather
             neurons=feather.read_table(ROOT/'connectome_data/malecns_v1/normalized/neurons.feather').to_pandas().set_index('source_id').loc[self.ids]
@@ -60,7 +68,7 @@ class MemoryBrain(NativeBrain):
         self.baseline_plastic=self.weight[self.circuit['edges']].copy()
         self.initial_weight_sha256=digest(self.weight)
         self.fields=['v','g','refractory','drive','previous_drive','queue','queue_count','counts',
-            'luminance','active','active_flag','nactive','last','eligibility','eligibility_last','modulation','modulation_last','adaptation']
+            'luminance','retinal_adaptation','active','active_flag','nactive','last','eligibility','eligibility_last','modulation','modulation_last','adaptation']
         self.initial={k:getattr(self,k).copy() for k in self.fields}
         from .rule import PARAMETERS as RULE_PARAMETERS
         self.rule_parameters=RULE_PARAMETERS.copy()
@@ -89,7 +97,7 @@ class MemoryBrain(NativeBrain):
         if not math.isfinite(duration_ms) or steps<1 or not math.isfinite(lamina_bias):raise ValueError('Invalid interval/current')
         self.luminance+=(1-math.exp(-steps*self.dt/10))*(np.clip(light,0,1)-self.luminance)
         self.drive.fill(0);self.drive[self.lamina]=lamina_bias
-        self.drive[self.retina]=30*self.luminance/(.02+self.luminance)
+        self.drive[self.retina]=adapted_drive(self.luminance,self.retinal_adaptation,steps*self.dt,tau_ms=self.retinal_adaptation_ms)
         self.drive+=self.tonic
         if stimulation is not None:
             pulses=stimulation if isinstance(stimulation,list) else [stimulation]
@@ -107,7 +115,8 @@ class MemoryBrain(NativeBrain):
             len(c['edges']),c['edges'].ctypes.data,c['pre'].ctypes.data,self.baseline_plastic.ctypes.data,c['gain'].ctypes.data,
             self.eta,PARAMETERS['trace_kc_seconds']*1000,PARAMETERS['minimum_fraction'],int(learning),
             self.modulation.ctypes.data,self.modulation_last.ctypes.data,self.modulation_mask.ctypes.data,self.rest.ctypes.data,
-            self.adaptation.ctypes.data,self.adaptation_jump,self.adaptation_tau)
+            self.adaptation.ctypes.data,self.adaptation_jump,self.adaptation_tau,
+            self.adaptation_mask.ctypes.data)
         elapsed=time.perf_counter()-start
         self.cursor=int(clock[0]);self.sim_ms=self.cursor*self.dt;self.total_spikes+=int(self.counts.sum())
         return self.counts.copy(),elapsed
@@ -167,5 +176,6 @@ class MemoryBrain(NativeBrain):
                 'rule':self.rule_parameters,'rule_sha256':hashlib.sha256(Path(__file__).with_name('rule.py').read_bytes()).hexdigest(),
                 'tonic':digest(self.tonic),'dan_baseline_hz':digest(self.dan_baseline_hz),
                 'rest':digest(self.rest),'adaptation_jump':self.adaptation_jump,'adaptation_tau':self.adaptation_tau,
+                'adaptation_mask':digest(self.adaptation_mask),
                 **{k:digest(getattr(self,k)) for k in ['retina','uv','lamina','sugar']},
                 **{k:digest(self.circuit[k]) for k in ['pre','gain','kc_mask','dan_index']}}

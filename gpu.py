@@ -53,6 +53,7 @@ import time
 from pathlib import Path
 import numpy as np
 from connectome_sim.engine import Brain
+from connectome_sim.photoreceptor import adapted_drive
 
 
 # dependency order matters: cublasLt/cublas before cusolver, nvjitlink/nvrtc
@@ -244,7 +245,9 @@ class GPUBrain(Brain):
         self.luminance += alpha * (np.clip(luminance, 0, 1) - self.luminance)
         drive_host = np.zeros(self.n, dtype=np.float32)
         drive_host[self.lamina] = lamina_bias
-        drive_host[self.retina] = 30 * self.luminance / (.02 + self.luminance)
+        drive_host[self.retina] = adapted_drive(self.luminance, self.retinal_adaptation,
+                                                steps * self.dt,
+                                                tau_ms=self.retinal_adaptation_ms)
         if sugar: drive_host[self.sugar] = 30
         if stimulation is not None:
             pulses = stimulation if isinstance(stimulation, list) else [stimulation]
