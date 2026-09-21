@@ -79,6 +79,7 @@ def export(dataset='malecns_v1'):
     from flappy.fly_regions import REGION_INFO, compute_regions
     from flappy.haltere_cluster_sweep import haltere_clusters
     from flappy.circuit import haltere_afferents
+    from connectome_sim.physiology.common import annotations
 
     class _IdsOnly:
         """haltere_clusters/haltere_afferents only ever read brain.ids -- avoid
@@ -103,6 +104,45 @@ def export(dataset='malecns_v1'):
             if i not in haltere_idx:
                 raise ValueError(f"haltere cluster {c['name']}: index {i} is not a haltere afferent")
 
+    # The two haltere afferents flybody-connectome's single-cell sweep found
+    # responsive alone (out of SApp's 148-cell undifferentiated bulk): SApp R
+    # body_id 101048 and SApp L body_id 136883 (see connectome-lab/experiments-
+    # summary.tsv and flybody-connectome/experiments/LOG.md, 2026-09-19 entry).
+    # Exported by body_id, not by cluster grouping, for a device-side lab that
+    # drives exactly these two cells independently.
+    SAPP_PAIR_BODY_IDS = [('SApp_R', 101048), ('SApp_L', 136883)]
+    ids_str = a['ids'].astype(str)
+    sapp_pair_out = []
+    for name, body_id in SAPP_PAIR_BODY_IDS:
+        matches = np.flatnonzero(ids_str == str(body_id))
+        if len(matches) != 1:
+            raise ValueError(f"expected exactly one graph index for body_id {body_id}, "
+                             f"got {len(matches)}")
+        idx = int(matches[0])
+        if idx not in haltere_idx:
+            raise ValueError(f"sapp_pair {name} (body_id {body_id}): index {idx} is not a "
+                             f"haltere afferent")
+        sapp_pair_out.append({'name': name, 'body_id': str(body_id), 'index': idx})
+
+    # Corazonin (CRZ) neurons: two confidently-typed, bilateral subtypes in
+    # this dataset's `type` annotation, CRZ01 and CRZ02 (4 cells total). Each
+    # channel pools its L+R pair -- unlike sapp_pair, side is not the
+    # scientific question here, subtype identity is. Five further cells carry
+    # only the ambiguous compound flywireType label "CRZ01,CRZ02" (tracing
+    # didn't resolve which subtype) and are deliberately excluded: only
+    # cleanly-typed cells are wired into a device-side stimulation channel.
+    # No prior single-cell response sweep exists for these (unlike SApp's
+    # 8/14/20mV table) -- this is a first stimulation, not a replication.
+    CRZ_TYPES = ['CRZ01', 'CRZ02']
+    types_str = annotations(a['ids']).type.astype(str).to_numpy()
+    crz_pair_out = []
+    for t in CRZ_TYPES:
+        matches = np.flatnonzero(types_str == t)
+        if len(matches) != 2:
+            raise ValueError(f"expected exactly 2 cells (L+R) typed {t}, got {len(matches)}")
+        crz_pair_out.append({'name': t, 'body_ids': [str(x) for x in a['ids'][matches]],
+                             'indices': [int(i) for i in matches]})
+
     manifest = {
         'dataset': dataset,
         'neurons': int(n),
@@ -117,13 +157,18 @@ def export(dataset='malecns_v1'):
         'motor_interface': prepared['motor_interface'],
         'motor_regions': motor_regions,
         'haltere_clusters': haltere_clusters_out,
+        'sapp_pair': sapp_pair_out,
+        'crz_pair': crz_pair_out,
         'note': 'Full retained connectome. No edge cropping, pruning or reordering.',
     }
     (out / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
-    summary = {k: v for k, v in manifest.items() if k not in ['blobs', 'readouts', 'motor_regions', 'haltere_clusters']}
+    summary = {k: v for k, v in manifest.items()
+               if k not in ['blobs', 'readouts', 'motor_regions', 'haltere_clusters', 'sapp_pair', 'crz_pair']}
     summary['readouts'] = len(readouts)
     summary['motor_regions'] = {r['id']: len(r['indices']) for r in motor_regions}
     summary['haltere_clusters'] = {c['name']: len(c['indices']) for c in haltere_clusters_out}
+    summary['sapp_pair'] = {c['name']: c['index'] for c in sapp_pair_out}
+    summary['crz_pair'] = {c['name']: c['indices'] for c in crz_pair_out}
     print(json.dumps(summary, indent=2))
     return manifest
 

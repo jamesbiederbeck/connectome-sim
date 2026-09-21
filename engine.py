@@ -102,6 +102,41 @@ class Brain:
         self.active[:len(initial)]=initial;self.active_flag[initial]=1
         self.nactive=np.asarray([len(initial)],dtype=np.int32)
         self.total_spikes=0;self.sim_ms=0
+    def reset(self):
+        """Restores exactly the state __init__ leaves behind: membrane
+        potentials, conductance, drive, refractory counters, the spike
+        queue, per-tick counts, luminance and photoreceptor adaptation, the
+        active-cell set, and the cursor/total-spike/sim-time counters. The
+        graph itself (ptr/post/weight/ids/...) is untouched -- this restarts
+        the same graph fresh, it does not reload it.
+
+        Written because nothing on `NativeBrain`/`GPUBrain` exposed a public
+        reset before this: `tune_server.py`'s "Reset position / velocity"
+        button only ever reset the game (`Game.new_episode()`), never the
+        brain, so neural state silently carried across every reset and every
+        m/n setting tried in the live tuner -- exactly the "reusing one
+        brain across conditions carries state" failure this project's own
+        methodology already names elsewhere (see e.g.
+        flybody-connectome/README.md's haltere table). `NativeBrain`'s own
+        extra fields (`previous_drive`, `last`) are reset here too via
+        `hasattr`, the same technique
+        flybody-connectome/experiments/haltere_axis_pairs.py's local
+        `_reset()` helper already used -- this supersedes needing a
+        per-script copy of that helper. `GPUBrain` moves some of this state
+        onto the GPU and keeps its own queue/count buffers separately, so it
+        overrides this method; see `GPUBrain.reset`.
+        """
+        self.v.fill(-52);self.g.fill(0);self.drive.fill(0)
+        self.refractory.fill(0);self.queue.fill(0);self.queue_count.fill(0)
+        self.counts.fill(0);self.luminance.fill(0)
+        self.retinal_adaptation.fill(DARK_SEMISATURATION)
+        self.active.fill(0);self.active_flag.fill(0)
+        initial=np.unique(np.r_[self.retina,self.lamina,self.sugar])
+        self.active[:len(initial)]=initial;self.active_flag[initial]=1
+        self.nactive[0]=len(initial)
+        self.cursor=0;self.total_spikes=0;self.sim_ms=0
+        if hasattr(self,'previous_drive'):self.previous_drive.fill(0)
+        if hasattr(self,'last'):self.last.fill(-1)
     def step(self,luminance,duration_ms,sugar=False,lamina_bias=12.0,stimulation=None):
         if len(luminance)!=len(self.retina) or not np.all(np.isfinite(luminance)):
             raise ValueError('A finite luminance sample is required for every mapped receptor')

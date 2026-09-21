@@ -1,5 +1,11 @@
 # connectome-sim constraints
 
+- Read `../connectome-lab/REPRODUCIBILITY.md` before changing anything that
+  computes `ROOT` from `__file__`, or anything touching how consumers check
+  this repo out (submodule vs. symlink): this is the shared engine, checked
+  out via a symlink from every harness's `connectome_sim` path, and both the
+  symlink setup and the `.absolute()`-not-`.resolve()` requirement it implies
+  are documented there, not duplicated per-repo.
 - This repository is the reusable connectome engine only: connectome import,
   the native/GPU LIF kernels, photoreceptor sampling, and the generic
   dopamine-gated-plasticity physiology code. It has no game harness of its

@@ -234,6 +234,20 @@ class GPUBrain(Brain):
         self._ag = math.exp(-dt / 5)
         self._coupling = (self._av - self._ag) / 3
 
+    def reset(self):
+        """Brain.reset() resets v/g/drive/refractory correctly as-is (cupy
+        arrays support .fill() the same as numpy), but __init__ replaced the
+        base class's queue/queue_count/counts with private cupy buffers
+        (_queue/_queue_count/_counts) that a step here actually reads and
+        writes -- the inherited numpy queue/queue_count/counts fields still
+        exist but are dead, unused weight. Reset those private buffers too,
+        or a GPU reset leaves stale queued spikes in flight.
+        """
+        super().reset()
+        self._queue.fill(0)
+        self._queue_count.fill(0)
+        self._counts.fill(0)
+
     def step(self, luminance, duration_ms, sugar=False, lamina_bias=12.0, stimulation=None):
         if len(luminance) != len(self.retina) or not np.all(np.isfinite(luminance)):
             raise ValueError('A finite luminance sample is required for every mapped receptor')
