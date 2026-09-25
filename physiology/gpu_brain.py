@@ -252,22 +252,35 @@ class GPUMemoryBrain(GPUBrain):
 
         self._memory_decay_kernel = cp.RawKernel(_MEMORY_DECAY_SPIKE_RESET_SOURCE, 'lif_memory_decay_spike_reset')
         self._memory_deliver_kernel = cp.RawKernel(_MEMORY_DELIVER_SCATTER_SOURCE, 'lif_memory_deliver_scatter')
+        self._snapshot_state()
+
+    # GPUBrain.STATE_FIELDS plus this class's own device-resident learning
+    # state. `v` is already in GPUBrain.STATE_FIELDS and is snapshotted here
+    # holding the per-cell resting potential (`self.v = cp.asarray(self.rest)`
+    # above overwrote GPUBrain's flat -52 default before this line runs), so
+    # the generic copy-on-write restore needs no special case for it -- unlike
+    # the old reset() below, which had to remember `self.v[:] = self._rest_gpu`
+    # by hand. `_adaptation` is this class's device-resident equivalent of
+    # `MemoryBrain.adaptation` (a different name because it lives on the GPU,
+    # not because it means something different).
+    STATE_FIELDS=GPUBrain.STATE_FIELDS+('_adaptation','rate_kc','rate_dan','memory_u','memory_w')
 
     def reset(self, keep_memory=False):
-        if keep_memory:
-            saved = (self.memory_u.copy(), self.memory_w.copy())
-        super().reset()  # GPUBrain.reset(): v/g/drive/refractory/queue bufs.
-        self.v[:] = self._rest_gpu
-        self._adaptation.fill(0)
+        """Copy-on-write reset (see Brain._snapshot_state) plus the plastic
+        KC->MBON11 weight subset on both the host array and its device
+        mirror (`_csr_weight`, which the GPU kernel actually reads -- see
+        the module docstring's point 4), and `keep_memory`, same meaning as
+        `MemoryBrain.reset`.
+        """
+        skip={'memory_u','memory_w'} if keep_memory else set()
+        for name,snapshot in self._initial_state.items():
+            if name in skip:continue
+            setattr(self,name,snapshot.copy())
+        for name,value in self.STATE_SCALARS.items():
+            setattr(self,name,value)
         if not keep_memory:
-            self.weight[self.circuit['edges']] = self.baseline_plastic
-            self._csr_weight[self._plastic_edges_gpu] = self._cp.asarray(self.baseline_plastic)
-            self.memory_u.fill(0)
-            self.memory_w.fill(0)
-        else:
-            self.memory_u[:], self.memory_w[:] = saved
-        self.rate_kc.fill(0)
-        self.rate_dan.fill(0)
+            self.weight[self.circuit['edges']]=self.baseline_plastic
+            self._csr_weight[self._plastic_edges_gpu]=self._cp.asarray(self.baseline_plastic)
 
     def _substep(self):
         cp = self._cp

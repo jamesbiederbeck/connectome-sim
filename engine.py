@@ -102,41 +102,57 @@ class Brain:
         self.active[:len(initial)]=initial;self.active_flag[initial]=1
         self.nactive=np.asarray([len(initial)],dtype=np.int32)
         self.total_spikes=0;self.sim_ms=0
-    def reset(self):
-        """Restores exactly the state __init__ leaves behind: membrane
-        potentials, conductance, drive, refractory counters, the spike
-        queue, per-tick counts, luminance and photoreceptor adaptation, the
-        active-cell set, and the cursor/total-spike/sim-time counters. The
-        graph itself (ptr/post/weight/ids/...) is untouched -- this restarts
-        the same graph fresh, it does not reload it.
+        self._snapshot_state()
+
+    # Every array reset() must restore to its __init__ value. A subclass that
+    # replaces or adds fields (GPUBrain moving state onto a device, MemoryBrain
+    # adding plasticity bookkeeping) overrides this tuple and calls
+    # _snapshot_state() again at the end of its own __init__, once every named
+    # field holds its real starting value. reset() itself is never overridden
+    # just to reach a new field -- see _snapshot_state's docstring for why this
+    # replaced a hand-written, hasattr-sniffing restore that could (and did)
+    # silently miss a field a subclass added.
+    STATE_FIELDS=('v','g','drive','refractory','queue','queue_count','counts',
+                  'luminance','retinal_adaptation','active','active_flag','nactive')
+    STATE_SCALARS={'cursor':0,'total_spikes':0,'sim_ms':0}
+
+    def _snapshot_state(self):
+        """Copy-on-write snapshot of STATE_FIELDS: an immutable reference
+        reset() copies fresh from, rather than a growing set of hand-restored
+        fields. `.copy()` works identically for numpy and cupy arrays, so a
+        GPU-resident subclass needs no special-cased restore logic here --
+        only its own STATE_FIELDS naming whichever (possibly device) arrays
+        it actually reads and writes.
 
         Written because nothing on `NativeBrain`/`GPUBrain` exposed a public
-        reset before this: `tune_server.py`'s "Reset position / velocity"
-        button only ever reset the game (`Game.new_episode()`), never the
-        brain, so neural state silently carried across every reset and every
-        m/n setting tried in the live tuner -- exactly the "reusing one
-        brain across conditions carries state" failure this project's own
+        reset before this existed: `tune_server.py`'s "Reset position /
+        velocity" button only ever reset the game (`Game.new_episode()`),
+        never the brain, so neural state silently carried across every reset
+        and every m/n setting tried in the live tuner -- exactly the "reusing
+        one brain across conditions carries state" failure this project's own
         methodology already names elsewhere (see e.g.
-        flybody-connectome/README.md's haltere table). `NativeBrain`'s own
-        extra fields (`previous_drive`, `last`) are reset here too via
-        `hasattr`, the same technique
-        flybody-connectome/experiments/haltere_axis_pairs.py's local
-        `_reset()` helper already used -- this supersedes needing a
-        per-script copy of that helper. `GPUBrain` moves some of this state
-        onto the GPU and keeps its own queue/count buffers separately, so it
-        overrides this method; see `GPUBrain.reset`.
+        flybody-connectome/README.md's haltere table).
         """
-        self.v.fill(-52);self.g.fill(0);self.drive.fill(0)
-        self.refractory.fill(0);self.queue.fill(0);self.queue_count.fill(0)
-        self.counts.fill(0);self.luminance.fill(0)
-        self.retinal_adaptation.fill(DARK_SEMISATURATION)
-        self.active.fill(0);self.active_flag.fill(0)
-        initial=np.unique(np.r_[self.retina,self.lamina,self.sugar])
-        self.active[:len(initial)]=initial;self.active_flag[initial]=1
-        self.nactive[0]=len(initial)
-        self.cursor=0;self.total_spikes=0;self.sim_ms=0
-        if hasattr(self,'previous_drive'):self.previous_drive.fill(0)
-        if hasattr(self,'last'):self.last.fill(-1)
+        # `self.STATE_FIELDS` resolves polymorphically -- a subclass's
+        # __init__ calling super().__init__() triggers this same method with
+        # the SUBCLASS's (larger) field list already in effect, before the
+        # subclass has added its own fields. `hasattr` skips those for that
+        # premature call; it is harmless because every class re-snapshots at
+        # the very end of its own __init__ (after every field it owns is
+        # set), and that last call always finds every field and fully
+        # replaces this dict rather than merging into it.
+        self._initial_state={name:getattr(self,name).copy() for name in self.STATE_FIELDS if hasattr(self,name)}
+
+    def reset(self):
+        """Drop every mutated array named in STATE_FIELDS and replace it with
+        a fresh copy of the snapshot _snapshot_state() took. The graph itself
+        (ptr/post/weight/ids/...) is untouched -- this restarts the same
+        graph fresh, it does not reload it.
+        """
+        for name,snapshot in self._initial_state.items():
+            setattr(self,name,snapshot.copy())
+        for name,value in self.STATE_SCALARS.items():
+            setattr(self,name,value)
     def step(self,luminance,duration_ms,sugar=False,lamina_bias=12.0,stimulation=None):
         if len(luminance)!=len(self.retina) or not np.all(np.isfinite(luminance)):
             raise ValueError('A finite luminance sample is required for every mapped receptor')

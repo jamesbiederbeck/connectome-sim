@@ -67,9 +67,6 @@ class MemoryBrain(NativeBrain):
         self.modulation_last=np.zeros(self.n,dtype=np.int64)
         self.baseline_plastic=self.weight[self.circuit['edges']].copy()
         self.initial_weight_sha256=digest(self.weight)
-        self.fields=['v','g','refractory','drive','previous_drive','queue','queue_count','counts',
-            'luminance','retinal_adaptation','active','active_flag','nactive','last','eligibility','eligibility_last','modulation','modulation_last','adaptation']
-        self.initial={k:getattr(self,k).copy() for k in self.fields}
         from .rule import PARAMETERS as RULE_PARAMETERS
         self.rule_parameters=RULE_PARAMETERS.copy()
         self.rate_kc=np.zeros(len(self.circuit['edges']),dtype=np.float64)
@@ -80,15 +77,33 @@ class MemoryBrain(NativeBrain):
         if self.tonic.shape!=(self.n,) or not np.isfinite(self.tonic).all():raise ValueError('Invalid tonic current')
         if self.dan_baseline_hz.shape!=(len(self.rate_dan),) or not np.isfinite(self.dan_baseline_hz).all():raise ValueError('Invalid DAN baseline')
         self.weights_frozen=False
-        for k in ['rate_kc','rate_dan','memory_u','memory_w']:
-            self.fields.append(k);self.initial[k]=getattr(self,k).copy()
+        self._snapshot_state()
+
+    # NativeBrain.STATE_FIELDS plus this class's own plasticity bookkeeping.
+    # memory_u/memory_w (the learned KC->MBON11 efficacy deviations) are
+    # still snapshotted here like everything else, since reset()'s
+    # keep_memory flag needs a pristine zero-state copy to fall back to --
+    # it just skips restoring them when the caller asks to keep what was
+    # learned.
+    STATE_FIELDS=NativeBrain.STATE_FIELDS+('eligibility','eligibility_last',
+        'modulation','modulation_last','adaptation','rate_kc','rate_dan',
+        'memory_u','memory_w')
 
     def reset(self,keep_memory=False):
-        if keep_memory:saved=(self.memory_u.copy(),self.memory_w.copy())
-        for k,v in self.initial.items():getattr(self,k)[:]=v
-        self.cursor=0;self.sim_ms=0.;self.total_spikes=0
+        """Copy-on-write reset (see Brain._snapshot_state) plus two things
+        no generic field restore can express: the plastic KC->MBON11 weight
+        subset (a slice of the 25.6M-edge graph array NativeBrain owns, not a
+        dedicated field of this class) and `keep_memory`, which excludes the
+        two learned-efficacy traces from the restore so a caller can reset
+        neural dynamics between trials without erasing what was learned.
+        """
+        skip={'memory_u','memory_w'} if keep_memory else set()
+        for name,snapshot in self._initial_state.items():
+            if name in skip:continue
+            setattr(self,name,snapshot.copy())
+        for name,value in self.STATE_SCALARS.items():
+            setattr(self,name,value)
         if not keep_memory:self.weight[self.circuit['edges']]=self.baseline_plastic
-        else:self.memory_u[:],self.memory_w[:]=saved
 
     def _neural_step(self,luminance,duration_ms,*,learning=False,stimulation=None,lamina_bias=12.):
         light=np.asarray(luminance)
@@ -153,7 +168,7 @@ class MemoryBrain(NativeBrain):
             'graph_post_sha256':digest(self.post),'plastic_edges_sha256':digest(self.circuit['edges']),
             'configuration_sha256':self.configuration_signature()}
         path=Path(path);path.parent.mkdir(parents=True,exist_ok=True)
-        np.savez(path,metadata=json.dumps(metadata),weight=self.weight,**{k:getattr(self,k) for k in self.fields})
+        np.savez(path,metadata=json.dumps(metadata),weight=self.weight,**{k:getattr(self,k) for k in self.STATE_FIELDS})
 
     def restore(self,path):
         with np.load(path,allow_pickle=False) as a:
@@ -163,9 +178,9 @@ class MemoryBrain(NativeBrain):
                 'plastic_edges_sha256':digest(self.circuit['edges']),
                 'configuration_sha256':self.configuration_signature()}
             if any(m.get(k)!=v for k,v in expected.items()):raise ValueError('Checkpoint provenance mismatch')
-            for k in ['weight',*self.fields]:
+            for k in ['weight',*self.STATE_FIELDS]:
                 if a[k].shape!=getattr(self,k).shape or a[k].dtype!=getattr(self,k).dtype:raise ValueError('Checkpoint array mismatch')
-            for k in ['weight',*self.fields]:getattr(self,k)[:]=a[k]
+            for k in ['weight',*self.STATE_FIELDS]:getattr(self,k)[:]=a[k]
             self.cursor=int(m['cursor']);self.sim_ms=self.cursor*self.dt;self.total_spikes=int(m['total_spikes'])
             self.weights_frozen=bool(m['weights_frozen'])
 

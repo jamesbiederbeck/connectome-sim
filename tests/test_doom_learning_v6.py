@@ -22,7 +22,7 @@ def test_full_state_checkpoint_reproduces_ongoing_memory(tmp_path):
     assert b.memory_u[0]<0 and b.weight[0]<20
     p=tmp_path/'checkpoint.npz';b.checkpoint(p)
     c,_=b.step([],200,learning=True,stimulation=([0,2],20),lamina_bias=0)
-    expected={k:getattr(b,k).copy() for k in ['weight',*b.fields]}
+    expected={k:getattr(b,k).copy() for k in ['weight',*b.STATE_FIELDS]}
     b.restore(p);d,_=b.step([],200,learning=True,stimulation=([0,2],20),lamina_bias=0)
     np.testing.assert_array_equal(c,d)
     for k,v in expected.items():np.testing.assert_array_equal(v,getattr(b,k),err_msg=k)

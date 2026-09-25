@@ -44,6 +44,8 @@ def projection(brain,a):
 
 
 class VisualMemoryBrain(MemoryBrain):
+    STATE_FIELDS=MemoryBrain.STATE_FIELDS+('r8_light',)
+
     def __init__(self,**kwargs):
         super().__init__(**kwargs);a=annotations(self.ids)
         self.r8,self.r8_uv,self.r8_confidence=projection(self,a)
@@ -55,7 +57,7 @@ class VisualMemoryBrain(MemoryBrain):
             corrected.extend(e.tolist());self.weight[e]=np.abs(self.weight[e])
         self.corrected_edges=np.asarray(corrected,dtype=np.int64)
         self.initial_weight_sha256=digest(self.weight)
-        self.fields.append('r8_light');self.initial['r8_light']=self.r8_light.copy()
+        self._snapshot_state()
         self.visual_report={'model':'r8-rgb-ame12-v1','mapped_R8p':int((self.r8_channel==2).sum()),
             'mapped_R8y':int((self.r8_channel==1).sum()),'known_unmapped':int(a.type.isin(['R8p','R8y']).sum()-len(self.r8)),
             'projection_confidence_median':float(np.median(self.r8_confidence)),

@@ -233,20 +233,18 @@ class GPUBrain(Brain):
         self._av = math.exp(-dt / 20)
         self._ag = math.exp(-dt / 5)
         self._coupling = (self._av - self._ag) / 3
+        self._snapshot_state()
 
-    def reset(self):
-        """Brain.reset() resets v/g/drive/refractory correctly as-is (cupy
-        arrays support .fill() the same as numpy), but __init__ replaced the
-        base class's queue/queue_count/counts with private cupy buffers
-        (_queue/_queue_count/_counts) that a step here actually reads and
-        writes -- the inherited numpy queue/queue_count/counts fields still
-        exist but are dead, unused weight. Reset those private buffers too,
-        or a GPU reset leaves stale queued spikes in flight.
-        """
-        super().reset()
-        self._queue.fill(0)
-        self._queue_count.fill(0)
-        self._counts.fill(0)
+    # __init__ replaced v/g/drive/refractory with cupy arrays and moved
+    # queue/queue_count/counts onto private GPU-resident buffers
+    # (_queue/_queue_count/_counts) -- the inherited numpy queue/queue_count/
+    # counts fields still exist but are dead, unused weight, so they're
+    # dropped from STATE_FIELDS rather than reset for no reason. No reset()
+    # override needed: Brain.reset()'s copy-on-write loop works identically
+    # on cupy arrays (.copy() is defined the same way), given the right field
+    # names.
+    STATE_FIELDS=('v','g','drive','refractory','_queue','_queue_count','_counts',
+                  'luminance','retinal_adaptation','active','active_flag','nactive')
 
     def step(self, luminance, duration_ms, sugar=False, lamina_bias=12.0, stimulation=None):
         if len(luminance) != len(self.retina) or not np.all(np.isfinite(luminance)):

@@ -25,6 +25,11 @@ class NativeBrain(Brain):
 
         self.previous_drive=np.zeros(self.n,dtype=np.float32)
         self.last=np.full(self.n,-1,dtype=np.int64)
+        self._snapshot_state()
+
+    # Brain.reset()'s copy-on-write loop covers these two extra fields once
+    # they're named here -- no override, no hasattr sniffing.
+    STATE_FIELDS=Brain.STATE_FIELDS+('previous_drive','last')
     def step(self,luminance,duration_ms,sugar=False,lamina_bias=12.0,stimulation=None):
         if len(luminance)!=len(self.retina) or not np.all(np.isfinite(luminance)):raise ValueError('Invalid retinal input')
         if not math.isfinite(duration_ms) or not math.isfinite(lamina_bias):raise ValueError('Finite duration and current required')
