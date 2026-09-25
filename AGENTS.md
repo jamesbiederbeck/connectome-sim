@@ -2,10 +2,16 @@
 
 - Read `../connectome-lab/REPRODUCIBILITY.md` before changing anything that
   computes `ROOT` from `__file__`, or anything touching how consumers check
-  this repo out (submodule vs. symlink): this is the shared engine, checked
-  out via a symlink from every harness's `connectome_sim` path, and both the
-  symlink setup and the `.absolute()`-not-`.resolve()` requirement it implies
-  are documented there, not duplicated per-repo.
+  this repo out: this is the shared engine, checked out as a real git
+  submodule pinned to a tagged commit in every harness's `connectome_sim`
+  path (`androsophila`, `flappy-haltere`, `flybody-connectome`). Edit it only
+  in this canonical checkout, never through a harness's `connectome_sim/`
+  path — that path is a separate checkout, and an edit made there is
+  invisible to git everywhere else until committed and pushed from the
+  harness (don't). Tag and push a release here first, then bump every
+  consumer's pin in the same session; details and the `.absolute()`-not-
+  `.resolve()` requirement are in `REPRODUCIBILITY.md`, not duplicated
+  per-repo.
 - This repository is the reusable connectome engine only: connectome import,
   the native/GPU LIF kernels, photoreceptor sampling, and the generic
   dopamine-gated-plasticity physiology code. It has no game harness of its
